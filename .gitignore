@@ -8,3 +8,33 @@ playblast*
 *.pyc
 ipch
 .DS_Store
+
+# Build artifacts (local)
+/build_2026/
+/build/
+/x64/
+/Release/
+/Debug/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+
+# Visual Studio / user files
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.VC.db
+
+# MSVC intermediate and object files
+*.obj
+*.pdb
+*.lib
+*.exp
+
+# tlog and build logs
+*.tlog
+

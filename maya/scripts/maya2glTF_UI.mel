@@ -1,376 +1,160 @@
-source "maya2glTF_common.mel";
-source "maya2glTF_animachine.mel";
-source "maya2glTF_version.mel";
-
-proc string _quoted(string $text)
-{
-    string $quote = "\"";
-    return $quote+$text+$quote;
-}
-
-proc string _ensureTrailingSlash(string $folder)
-{
-    return $folder + (endsWith($folder,"/") ? "" : "/");
-}
-
-proc string _combinePaths(string $path1, string $path2) {
-    return size($path1) == 0
-     ? $path2
-     : _ensureTrailingSlash($path1)+$path2;
-}
-
-proc string _ensureScriptNode() {
-    string $node = "maya2glTF_scriptNode";
-
-    if (!`objExists $node`) {
-        scriptNode -st 2 -n $node;
-    }
-
-    return $node;
-}
-
-proc _deleteScriptNode() {
-    string $node = "maya2glTF_scriptNode";
-
-    if (`objExists $node`) {
-        delete $node;
+// --- Helper Procs for Animation Management ---
+global proc maya2glTF_AddClip() {
+    string $name = `textField -q -text tf_clipName`;
+    float $start = `floatField -q -value ff_clipStart`;
+    float $end = `floatField -q -value ff_clipEnd`;
+    if ($name != "") {
+        textScrollList -e -append ($name + " | " + $start + ":" + $end) tsl_clipList;
+        textField -e -text "" tf_clipName; 
     }
 }
 
-proc _setInt(string $key, int $value) {
-    string $node = _ensureScriptNode();
-    if (!attributeExists($key, $node)) {
-        addAttr -sn $key -ln $key -at "long" $node;
-    }
-    setAttr ($node+"."+$key) $value;
+global proc maya2glTF_RemoveClip() {
+    int $idx[] = `textScrollList -q -selectIndexedItem tsl_clipList`;
+    if (size($idx) > 0) textScrollList -e -removeIndexedItem $idx[0] tsl_clipList;
 }
 
-proc _setFlt(string $key, float $value) {
-    string $node = _ensureScriptNode();
-    if (!attributeExists($key, $node)) {
-        addAttr -sn $key -ln $key -at "float" $node;
-    }
-    setAttr ($node+"."+$key) $value;
+// --- Main UI ---
+global proc maya2glTF_UI() {
+    if (`window -exists maya2glTF_Win`) deleteUI maya2glTF_Win;
+
+    window -title "Maya2glTF - Exporter 2026" -widthHeight 450 850 maya2glTF_Win;
+    scrollLayout -childResizable true;Å
+    columnLayout -adjustableColumn true -rowSpacing 5;
+
+    // --- 1. Asset & Output Identification ---
+    frameLayout -label "Asset Identification" -collapsable true -marginWidth 10;
+        columnLayout -adjustableColumn true -rowSpacing 5;
+            rowLayout -numberOfColumns 2 -columnWidth2 100 300 -adjustableColumn 2;
+                text -label "Scene Name:";
+                textField -text "MyScene" tf_sceneName;
+            setParent ..;
+            rowLayout -numberOfColumns 2 -columnWidth2 100 300 -adjustableColumn 2;
+                text -label "Copyright:";
+                textField -text "" tf_copyright;
+            setParent ..;
+            rowLayout -numberOfColumns 3 -columnWidth3 100 250 60 -adjustableColumn 2;
+                text -label "Output Folder: ";
+                textField -text `workspace -q -rd` tf_outputDir;
+                button -label "Browse" -command "string $dir[] = `fileDialog2 -fileMode 3`; if(size($dir)>0) textField -e -text $dir[0] tf_outputDir;";
+            setParent ..;
+        setParent ..;
+    setParent ..;
+
+    // --- 2. Shader & Workflow Tools ---
+    frameLayout -label "PBR Shader & Workflow Tools" -collapsable true -marginWidth 10;
+        columnLayout -adjustableColumn true -rowSpacing 8;
+            button -label "assign PBR shader to selection" -backgroundColor 0.95 0.75 0.1 -command "maya2glTF_assignPbrShader();";
+            separator -height 10 -style "in";
+            button -label "ignore selected mesh deformers" -backgroundColor 0.95 0.75 0.5 -command "maya2glTF_ignoreSelectedDeformers();";
+            
+            text -label "Manual Ignore Deformers (space separated):" -align "left";
+            textField -placeholderText "blendShape1 skinCluster2" tf_ignoreDeformers;
+        setParent ..;
+    setParent ..;
+
+    // --- 3. Filter & Mesh Settings ---
+    frameLayout -label "Mesh & Scene Filters" -collapsable true -marginWidth 10;
+        columnLayout -adjustableColumn true -rowSpacing 5;
+            checkBox -label "Selected nodes only" -value 0 chk_selectedOnly;
+            checkBox -label "Visible nodes only" -value 1 chk_visibleOnly;
+            checkBox -label "Export as Binary (.glb)" -value 1 chk_glb;
+            
+            rowLayout -numberOfColumns 2 -columnWidth2 150 100;
+                text -label "Scale Factor:";
+                floatField -value 1.0 ff_scaleFactor;
+            setParent ..;
+
+            separator -height 10 -style "in";
+            
+            // --- Extra Flags Field ---
+            text -label "Extra Arguments / Flags:" -align "left";
+            textField -placeholderText "-cm -ssm -mts" tf_extraFlags;
+        setParent ..;
+    setParent ..;
+
+    // --- 4. Animation Settings ---
+    frameLayout -label "Animation & Clips" -collapsable true -marginWidth 10;
+        columnLayout -adjustableColumn true -rowSpacing 5;
+            rowLayout -numberOfColumns 2 -columnWidth2 150 100;
+                text -label "Target Frame Rate (FPS):";
+                floatField -value 30.0 ff_animFPS;
+            setParent ..;
+
+            separator -style "in" -height 10;
+            text -label "Animation Clips Manager:" -font "boldLabelFont";
+            textScrollList -height 100 tsl_clipList;
+            
+            rowLayout -numberOfColumns 3 -columnWidth3 120 80 80 -adjustableColumn 1;
+                textField -placeholderText "Clip Name" tf_clipName;
+                floatField -value 1.0 ff_clipStart;
+                floatField -value 24.0 ff_clipEnd;
+            setParent ..;
+
+            rowLayout -numberOfColumns 2 -columnWidth2 200 200 -adjustableColumn 1;
+                button -label "Add Clip"  -backgroundColor 0.2 0.8 0.4 -c "maya2glTF_AddClip";
+                button -label "Remove Selected" -backgroundColor 0.7 0.2 0.2 -c "maya2glTF_RemoveClip";
+            setParent ..;
+        setParent ..;
+    setParent ..;
+
+    // --- Execution ---
+    separator -height 20 -style "none";
+    button -label "RUN EXPORT" -height 50 -backgroundColor 0.2 0.4 0.6 -command "maya2glTF_ExecuteExport";
+
+    showWindow maya2glTF_Win;
 }
 
-proc _setStr(string $key, string $value) {
-    string $node = _ensureScriptNode();
-    if (!attributeExists($key, $node)) {
-        addAttr -sn $key -ln $key -dt "string" $node;
-    }
-    setAttr ($node+"."+$key) -type "string" $value;
-}
+// --- Export Execution ---
+global proc maya2glTF_ExecuteExport() {
+    string $cmd = "maya2glTF";
 
-proc int _getInt(string $key, int $defaultValue) {
-    string $node = _ensureScriptNode();
-    return attributeExists($key, $node) ? `getAttr ($node+"."+$key)` : $defaultValue;
-}
-
-proc float _getFlt(string $key, float $defaultValue) {
-    string $node = _ensureScriptNode();
-    return attributeExists($key, $node) ? `getAttr ($node+"."+$key)` : $defaultValue;
-}
-
-proc string _getStr(string $key, string $defaultValue) {
-    string $node = _ensureScriptNode();
-    return attributeExists($key, $node) ? `getAttr ($node+"."+$key)` : $defaultValue;
-}
-
-proc string _getTraxClips(string $char) {
-    float $startTimes[];
-    float $stopTimes[];
-    string $clipNames[];
-    int $clipCount = maya2glTF_getTraxClips($char, $startTimes, $stopTimes, $clipNames);
-
-    string $fps = `currentTimeUnitToFPS`;
-    string $flags = `format -s($fps) " -afr ^1s"`;
-
-    int $i;
-    for ($i=0; $i<$clipCount; ++$i) {
-        $flags += `format -s(_quoted($clipNames[$i])) -s($startTimes[$i]) -s($stopTimes[$i])" -acn ^1s -ast ^2s -aet ^3s"`;
-    }
-
-    print ($flags+"\n");
-
-    return $flags;
-}
-
-global proc maya2glTF_ignoreSelectedDeformers() 
-{
-    string $bsList[] = `ls -sl -type blendShape`;
-    string $scList[] = `ls -sl -type skinCluster`;
-    string $deformers[] = stringArrayCatenate($bsList, $scList);
-
-    if (size($deformers) == 0)
-        error "No blendShape or skinCluster was selected";
-
-    string $attrName = "MGi";
-    string $niceName = "Ignored by maya2glTF";
-
-    for ($deformer in $deformers) {
-        if (attributeExists($attrName, $deformer)) {
-            print ("Deleting existing attribute on "+$deformer+"\n");
-            deleteAttr -at $attrName -n $deformer;
-        }
-
-        print ("Adding attribute " + $attrName + " on " + $deformer + "\n");
-        addAttr -at bool -nn $niceName -sn $attrName -dv on -ct "maya2glTF" $deformer;
-    }
-}
-
-global proc maya2glTF_onExport
-( string $copyrightFLD
-, string $folderFLD
-, string $sceneNameFLD
-, string $scaleFLD
-, string $flagsFLD
-, string $animFLD
-, string $clipFLD
-, string $charFLD
-, string $selOnlyFLD
-, string $visOnlyFLD
-)
-{
-    // This is defined on maya startup
-    global string $gMainProgressBar;  
-
-    // Workaround a maya bug: progress is cancelled twice
-    progressBar -edit
-        -beginProgress
-        -isInterruptable true
-        -status "maya2glTF: preparing for export..."
-        -minValue 0
-        -maxValue 1
-        $gMainProgressBar;
-
-    while(`progressBar -query -isCancelled $gMainProgressBar`) 
-    {
-        print ("maya2glTF: aborting previous export...\n");
-        progressBar -edit -endProgress $gMainProgressBar;
-    }
-
-    progressBar -edit -endProgress $gMainProgressBar;
-
-    string $copyright = `textFieldGrp -q -fileName $copyrightFLD`; 
-    string $folder = `textFieldGrp -q -fileName $folderFLD`;
-    $folder = _ensureTrailingSlash($folder);
-    string $sceneName = `textFieldGrp -q -text $sceneNameFLD`;
-    float $scale = `floatFieldGrp -q -value1 $scaleFLD`;
-    string $flags = `textFieldGrp -q -text $flagsFLD`;
-    int $anim = `optionMenuGrp -q -sl $animFLD`;
-    string $clip = `textFieldGrp -q -text $clipFLD`;
-    string $char = `optionMenuGrp -q -v $charFLD`;
-    int $selOnly = `checkBoxGrp -q -value1 $selOnlyFLD`;
-    int $visOnly = `checkBoxGrp -q -value1 $visOnlyFLD`;
-
-    // Persist values
-    _setStr("outputFolder", $folder);
-    _setStr("sceneName", $sceneName);
-    _setStr("copyright", $copyright);
-    _setFlt("scale", $scale);
-    _setStr("flags", $flags);
-    _setStr("char", $char);
-    _setInt("anim", $anim);
-    _setStr("clip", $clip);
-    _setInt("selOnly", $selOnly);
-    _setInt("visOnly", $visOnly);
-
-    switch ($anim) 
-    {
-        case 2:
-        case 3:
-        {
-            string $ast = $anim == 2 ? `playbackOptions -q -min` : `playbackOptions -q -ast`;
-            string $aet = $anim == 2 ? `playbackOptions -q -max` : `playbackOptions -q -aet`;
-            string $fps = `currentTimeUnitToFPS`;
-            $flags += `format -s(_quoted($clip)) -s($ast) -s($aet) -s($fps) " -acn ^1s -ast ^2s -aet ^3s -afr ^4s"`;
-        }
-        break;
-
-        case 4:
-            // Fetch clips from TRAX
-            $flags += _getTraxClips($char);
-            break;
-    }
-
-    if ($selOnly) {
-        $flags += " -sno";
-    }
-
-    if ($visOnly) {
-        $flags += " -vno";
-    }
-
-    string $cmd = `format 
-        -s(_quoted($sceneName)) 
-        -s(_quoted($folder)) 
-        -s($scale) 
-        -s(_quoted($copyright)) 
-        -s($flags)
-        "maya2glTF -sn ^1s -of ^2s -sf ^3s -cpr ^4s ^5s"
-    `;
-
-    print ($cmd+"\n");
-
-    print ("maya2glTF: loading plugin...\n");
-
-    loadPlugin "maya2glTF";
-
-    print ("maya2glTF: plugin loaded.\n");
-
-    int $failed = catch(eval($cmd));
-
-    unloadPlugin "maya2glTF";
-
-    int $aborted = `progressBar -query -isCancelled $gMainProgressBar`;
-
-    if (!$failed && !$aborted) {
-        // Export animation metadata
-        // TODO: Make this optional!
-        if ($anim > 1)
-        {
-            string $outputName = $sceneName+".json";
-            string $outputPath = _combinePaths($folder, $outputName);
-            string $json = $anim == 4 
-                ? maya2glTF_traxAnimMetaDataToJSON($sceneName, $char)
-                : maya2glTF_sceneAnimMetaDataToJSON($sceneName, $anim == 2, false);
-
-            int $fileId=`fopen $outputPath "w"`;
-            fprint $fileId $json;
-            fclose $fileId;   
-        }
-    }
-
-    if ($aborted) {
-        print ("*** maya2glTF: aborted at "+`date -time`+" ***\n");
-    } else if ($failed) {
-        print ("!!! maya2glTF: failed at "+`date -time`+" !!!\n");
-    } else {
-        print ("+++ maya2glTF: completed at "+`date -time`+" +++\n");
-    }
-
-    progressBar -edit -endProgress $gMainProgressBar;
-}
-
-proc string _getDefaultOutputFolder() {
-    string $scenePath = `file -q -loc`;
-    string $sceneDir = dirname($scenePath);
-    string $actualDir = size($sceneDir) == 0 ? `getenv "MAYA_APP_DIR"` : $sceneDir;
-    return  _ensureTrailingSlash($actualDir)+"export/";
-}
-
-proc string _getDefaultSceneName() {
-    string $sceneName = basenameEx(`file -q -sceneName -shortName`);
-    return size($sceneName) == 0 ? "untitled" : $sceneName;
-}
-
-global proc maya2glTF_resetUI() {
-    _deleteScriptNode();
-    maya2glTF_UI();
-}
-
-global proc maya2glTF_UI()
-{
-    // This is defined on maya startup
-    global string $gMainProgressBar;  
+    // Identification
+    $cmd += (" -of \"" + `textField -q -text tf_outputDir` + "\"");
+    $cmd += (" -sn \"" + `textField -q -text tf_sceneName` + "\"");
     
-    if (`window -exists maya2glTF_exporter_window`)
-        deleteUI maya2glTF_exporter_window;
+    string $cpr = `textField -q -text tf_copyright`;
+    if ($cpr != "") $cmd += (" -cpr \"" + $cpr + "\"");
 
-    string $year = `date -format "YYYY"`;
-    string $chars[] = `ls -type character`;
-
-    // Load previous or default values
-    string $exportDir = fromNativePath(_getStr("outputFolder", _getDefaultOutputFolder()));
-    string $sceneName = _getStr("sceneName", _getDefaultSceneName());
-    string $copyright = _getStr("copyright", "(C)"+$year+" "+getenv("username"));
-    float $scale = _getFlt("scale", 1);
-    string $flags = _getStr("flags", "");
-    string $char = _getStr("char", $chars[0]);
-    int $anim = _getInt("anim", 1);
-    string $clip = _getStr("clip", "clip");
-    int $selOnly = _getInt("selOnly", 1);
-    int $visOnly = _getInt("visOnly", 1);
-
-    window -title ("maya2glTF") maya2glTF_exporter_window;
-
-    string $header = "Copyright (C)" + $year + " IIM    version " + maya2glTF_version();
-
-    string $frame = `frameLayout -mw 30 -mh 30 ($header)`;
-
-    columnLayout -adjustableColumn true -rowSpacing 10; 
-
-    button -label "assign PBR shader to selection" -command "maya2glTF_assignPbrShader();";
-    button -label "ignore selected mesh deformers" -command "maya2glTF_ignoreSelectedDeformers();";
-
-    separator;
-
-    button -label "select all polygon meshes" -command "maya2glTF_polySelectAndFrame();" -bgc (60/255.0) (80/255.0) (120/255.0);
-
-    separator;
-
-    string $folderFLD = `textFieldGrp -fileName $exportDir -label "output folder:" -adjustableColumn 2`;
-    string $copyrightFLD = `textFieldGrp -text $copyright -label "copyright:" -adjustableColumn 2`;
-    string $sceneNameFLD = `textFieldGrp -text $sceneName -label "scene name:" -adjustableColumn 2`;
-    string $scaleFLD = `floatFieldGrp -precision 6 -value1 $scale -label "scale factor:"`;
-    string $selOnlyFLD = `checkBoxGrp -value1 $selOnly -label "selected only?" -annotation "Export just the selected nodes, or also include the hierarchy underneath them?"`;
-    string $visOnlyFLD = `checkBoxGrp -value1 $visOnly -label "visible only?"`;
-
-    string $flagsFLD = `textFieldGrp -text $flags -label "extra flags:" -adjustableColumn 2 `;
-
-    string $animFLD = `optionMenuGrp -label "animation:" -adjustableColumn 2`;
-        menuItem -label "none";
-        menuItem -label "time slider";
-        menuItem -label "range slider";
-
-    if (size($chars) > 0)
-        menuItem -label "trax";	
-
-    string $clipFLD = `textFieldGrp -label "clip name:" -text $clip -enable 0 -adjustableColumn 2`;
-
-    string $charFLD = `optionMenuGrp -label "character:" -enable 0 -adjustableColumn 2`;
+    // Mesh Filters & Scale
+    if (`checkBox -q -value chk_selectedOnly`) $cmd += " -sno";
+    if (`checkBox -q -value chk_visibleOnly`)  $cmd += " -vno";
+    if (`checkBox -q -value chk_glb`)          $cmd += " -glb";
     
-    for ($c in $chars)
-        menuItem -label $c;
+    float $scale = `floatField -q -value ff_scaleFactor`;
+    $cmd += (" -sf " + $scale);
 
-    if (size($chars) == 0)
-        menuItem -label "";
+    // Deformers
+    string $ignore = `textField -q -text tf_ignoreDeformers`;
+    if ($ignore != "") {
+        string $deformers[];
+        tokenize $ignore " " $deformers;
+        for ($d in $deformers) $cmd += (" -imd \"" + $d + "\"");
+    }
 
-    string $animCMD = `format 
-        -s(_quoted($animFLD)) 
-        -s(_quoted($charFLD)) 
-        -s(_quoted($clipFLD))
-        ( 
-            "optionMenuGrp -edit -enable (`optionMenuGrp -q -sl ^1s` == 4) ^2s;" +
-            "textFieldGrp -edit -enable (`optionMenuGrp -q -sl ^1s` == 2 || `optionMenuGrp -q -sl ^1s` == 3) ^3s;"
-        )`;
+    // Animation
+    float $fps = `floatField -q -value ff_animFPS`;
+    $cmd += (" -afr " + $fps);
 
-    optionMenuGrp -edit -changeCommand $animCMD $animFLD;
+    // Multi-Clip Logic
+    string $allClips[] = `textScrollList -q -allItems tsl_clipList`;
+    for ($clip in $allClips) {
+        string $tokens[];
+        tokenize $clip " |:" $tokens;
+        $cmd += (" -acn \"" + $tokens[0] + "\"");
+        $cmd += (" -ast " + $tokens[1]);
+        $cmd += (" -aet " + $tokens[2]);
+    }
 
-    catch(`optionMenuGrp -edit -value $char $charFLD`);
-    catch(`optionMenuGrp -edit -select $anim $animFLD`);
-    catch(`eval $animCMD`);
+    // --- Append Extra Flags ---
+    string $extra = `textField -q -text tf_extraFlags`;
+    if ($extra != "") {
+        $cmd += (" " + $extra);
+    }
 
-    separator;
-
-    string $exportCMD = `format 
-        -s(_quoted($copyrightFLD)) 
-        -s(_quoted($folderFLD)) 
-        -s(_quoted($sceneNameFLD)) 
-        -s(_quoted($scaleFLD))
-        -s(_quoted($flagsFLD))
-        -s(_quoted($animFLD))
-        -s(_quoted($clipFLD))
-        -s(_quoted($charFLD))
-        -s(_quoted($selOnlyFLD))
-        -s(_quoted($visOnlyFLD))
-         "maya2glTF_onExport(^1s, ^2s, ^3s, ^4s, ^5s, ^6s, ^7s, ^8s, ^9s, ^10s);"`;
-
-    button -label "export selected meshes" -command $exportCMD -bgc  (50/255.0) (120/255.0) (70/255.0);
-
-    separator;
-
-    button -label "reset to default values" -command "evalDeferred(\"maya2glTF_resetUI();\");";
-    
-    showWindow maya2glTF_exporter_window;
+    print("Executing: " + $cmd + "\n");
+    eval($cmd);
 }
+
+// Launch the UI
+maya2glTF_UI();
