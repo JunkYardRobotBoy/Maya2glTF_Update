@@ -14,6 +14,7 @@ ExportableMaterial::~ExportableMaterial() = default;
 std::unique_ptr<ExportableMaterial> ExportableMaterial::from(ExportableResources &resources,
                                                              const MFnDependencyNode &shaderNode) {
     if (shaderNode.typeName() == "GLSLShader" || shaderNode.typeName() == "aiStandardSurface" ||
+        shaderNode.typeName() == "openPBRSurface" ||
         !resources.arguments().skipStandardMaterials)
         return std::make_unique<ExportableMaterialPBR>(resources, shaderNode);
 
@@ -78,6 +79,11 @@ ExportableMaterialPBR::ExportableMaterialPBR(ExportableResources &resources, con
 
     if (shaderNode.typeName() == "aiStandardSurface") {
         loadAiStandard(resources, shaderObject);
+        return;
+    }
+
+    if (shaderNode.typeName() == "openPBRSurface") {
+        loadOpenPBR(resources, shaderObject);
         return;
     }
 
@@ -159,6 +165,164 @@ void ExportableMaterialPBR::convert(ExportableResources &resources, const MObjec
     }
 }
 
+void ExportableMaterialPBR::loadOpenPBR(ExportableResources &resources, const MFnDependencyNode &shaderNode) {
+    MStatus status;
+    const auto shaderObject = shaderNode.object(&status);
+    THROW_ON_FAILURE(status);
+
+    auto &args = resources.arguments();
+    args.assignName(m_glMaterial, shaderNode, "");
+
+    m_glMaterial.alphaMode = "OPAQUE";
+
+    float baseWeight = 1.0f;
+    if (!getScalar(shaderObject, "base_weight", baseWeight)) {
+        getScalar(shaderObject, "base", baseWeight);
+    }
+
+    m_glBaseColorFactor = {1.f, 1.f, 1.f, 1.f};
+    Float4 customBaseColor = {1.f, 1.f, 1.f, 1.f};
+    bool hasBaseColor = getColor(shaderObject, "base_color", customBaseColor);
+    if (!hasBaseColor) {
+        hasBaseColor = getColor(shaderObject, "baseColor", customBaseColor);
+    }
+
+    if (hasBaseColor) {
+        m_glBaseColorFactor = {customBaseColor[0] * baseWeight, customBaseColor[1] * baseWeight, customBaseColor[2] * baseWeight, 1.0f};
+    }
+
+    float opacity = 1.0f;
+    if (!getScalar(shaderObject, "geometry_opacity", opacity)) {
+        getScalar(shaderObject, "opacity", opacity);
+    }
+    m_glBaseColorFactor[3] = opacity;
+
+    m_glMetallicRoughness.baseColorFactor = &m_glBaseColorFactor[0];
+    m_glMaterial.metallicRoughness = &m_glMetallicRoughness;
+ 
+    auto baseColorTex = ExportableTexture::tryCreate(resources, shaderObject, "base_color");
+    if (!baseColorTex) baseColorTex = ExportableTexture::tryCreate(resources, shaderObject, "baseColor");
+
+    if (baseColorTex && baseColorTex->glTexture) {
+        m_glBaseColorTexture.texture = baseColorTex->glTexture;
+        m_glMetallicRoughness.baseColorTexture = &m_glBaseColorTexture;
+        
+        // Check for transparency in the texture
+        bool hasTransparency = false;
+        unsigned baseColorWidth = baseColorTex->glTexture->source->getDimensions().first;
+        unsigned baseColorHeight = baseColorTex->glTexture->source->getDimensions().second;
+        uint32_t *baseColorPixels = reinterpret_cast<uint32_t *>(baseColorTex->glTexture->source->data);
+        int64_t pixelCount = (int64_t)baseColorWidth * baseColorHeight;
+        if (pixelCount > 0 && baseColorPixels) {
+            while (--pixelCount >= 0) {
+                uint8_t *pixel = reinterpret_cast<uint8_t *>(baseColorPixels++);
+                if (pixel[3] != 255) {
+                    hasTransparency = true;
+                    break;
+                }
+            }
+        }
+
+        if (hasTransparency) {
+            m_glMaterial.alphaMode = "BLEND";
+        }
+
+        // When using a texture, the factor is a multiplier. 
+        // We set it to baseWeight to allow scaling the texture.
+        m_glBaseColorFactor = {baseWeight, baseWeight, baseWeight, opacity};
+        resources.registerTexture(std::move(baseColorTex));
+    }
+
+    if (m_glBaseColorFactor[3] < 1.0f) {
+        m_glMaterial.alphaMode = "BLEND";
+    }
+
+    // Roughness and metallic
+    m_glMetallicRoughness.roughnessFactor = 0.5f;
+    m_glMetallicRoughness.metallicFactor = 0.0f;
+
+    if (!getScalar(shaderObject, "specular_roughness", m_glMetallicRoughness.roughnessFactor)) {
+        if (!getScalar(shaderObject, "specularRoughness", m_glMetallicRoughness.roughnessFactor)) {
+            getScalar(shaderObject, "roughness", m_glMetallicRoughness.roughnessFactor);
+        }
+    }
+    if (!getScalar(shaderObject, "base_metalness", m_glMetallicRoughness.metallicFactor)) {
+        if (!getScalar(shaderObject, "metalness", m_glMetallicRoughness.metallicFactor)) {
+            getScalar(shaderObject, "metallic", m_glMetallicRoughness.metallicFactor);
+        }
+    }
+
+    auto roughnessTex = ExportableTexture::tryCreate(resources, shaderObject, "specular_roughness");
+    if (!roughnessTex) roughnessTex = ExportableTexture::tryCreate(resources, shaderObject, "specularRoughness");
+    if (!roughnessTex) roughnessTex = ExportableTexture::tryCreate(resources, shaderObject, "roughness");
+
+    auto metallicTex = ExportableTexture::tryCreate(resources, shaderObject, "base_metalness");
+    if (!metallicTex) metallicTex = ExportableTexture::tryCreate(resources, shaderObject, "metalness");
+    if (!metallicTex) metallicTex = ExportableTexture::tryCreate(resources, shaderObject, "metallic");
+
+    if (roughnessTex || metallicTex) {
+        status = tryCreateRoughnessMetalnessTexture(resources, metallicTex.get(), roughnessTex.get(), status);
+        m_glMetallicRoughness.metallicRoughnessTexture = &m_glMetallicRoughnessTexture;
+        if (roughnessTex) {
+            m_glMetallicRoughness.roughnessFactor = 1.0f;
+            resources.registerTexture(std::move(roughnessTex));
+        }
+        if (metallicTex) {
+            m_glMetallicRoughness.metallicFactor = 1.0f;
+            resources.registerTexture(std::move(metallicTex));
+        }
+    }
+
+    // Emission
+    float emissionLuminance = 0.0f; // Default to 0
+    if (!getScalar(shaderObject, "emission_luminance", emissionLuminance)) {
+        getScalar(shaderObject, "emission", emissionLuminance);
+    }
+
+    m_glEmissiveFactor = {0, 0, 0, 0};
+    Float4 customEmissiveColor = {0, 0, 0, 0};
+    bool hasEmissionColor = getColor(shaderObject, "emission_color", customEmissiveColor);
+    if (!hasEmissionColor) {
+        hasEmissionColor = getColor(shaderObject, "emissionColor", customEmissiveColor);
+    }
+
+    if (hasEmissionColor && emissionLuminance > 0.0f) {
+        m_glEmissiveFactor = {customEmissiveColor[0] * emissionLuminance, customEmissiveColor[1] * emissionLuminance, customEmissiveColor[2] * emissionLuminance, 1.0f};
+        m_glMaterial.emissiveFactor = &m_glEmissiveFactor[0];
+    }
+
+    auto emissiveTex = ExportableTexture::tryCreate(resources, shaderObject, "emission_color");
+    if (!emissiveTex) emissiveTex = ExportableTexture::tryCreate(resources, shaderObject, "emissionColor");
+
+    if (emissiveTex && emissiveTex->glTexture) {
+        m_glEmissiveTexture.texture = emissiveTex->glTexture;
+        m_glMaterial.emissiveTexture = &m_glEmissiveTexture;
+        // Factor multiplier. If luminance is 0, we still allow the texture if present, but usually luminance > 0 if there's a map.
+        if (emissionLuminance == 0.0f) emissionLuminance = 1.0f; 
+        m_glEmissiveFactor = {emissionLuminance, emissionLuminance, emissionLuminance, 1.0f};
+        m_glMaterial.emissiveFactor = &m_glEmissiveFactor[0];
+        resources.registerTexture(std::move(emissiveTex));
+    }
+
+    // Normal
+    float normalScale = 1.0f;
+    GLTF::Texture *normalTexture = nullptr;
+    if (tryCreateNormalTexture(resources, shaderObject, normalScale, normalTexture)) {
+        m_glNormalTexture.texture = normalTexture;
+        m_glNormalTexture.scale = normalScale;
+        m_glMaterial.normalTexture = &m_glNormalTexture;
+    } else {
+        // Try direct connection to geometry_normal
+        auto normalTex = ExportableTexture::tryCreate(resources, shaderObject, "geometry_normal");
+        if (normalTex && normalTex->glTexture) {
+            m_glNormalTexture.texture = normalTex->glTexture;
+            m_glNormalTexture.scale = 1.0f;
+            m_glMaterial.normalTexture = &m_glNormalTexture;
+            resources.registerTexture(std::move(normalTex));
+        }
+    }
+}
+
 void ExportableMaterialPBR::loadPBR(ExportableResources &resources, const MFnDependencyNode &shaderNode) {
     MStatus status;
     const auto shaderObject = shaderNode.object(&status);
@@ -217,11 +381,13 @@ void ExportableMaterialPBR::loadPBR(ExportableResources &resources, const MFnDep
         m_glMaterial.metallicRoughness = &m_glMetallicRoughness;
     }
 
-    const auto roughnessTexture = ExportableTexture::tryCreate(resources, shaderObject, "u_RoughnessTexture");
-    const auto metallicTexture = ExportableTexture::tryCreate(resources, shaderObject, "u_MetallicTexture");
-    if (roughnessTexture || metallicTexture) {
-        status = tryCreateRoughnessMetalnessTexture(resources, metallicTexture.get(), roughnessTexture.get(), status);
+    auto roughnessTex = ExportableTexture::tryCreate(resources, shaderObject, "u_RoughnessTexture");
+    auto metallicTex = ExportableTexture::tryCreate(resources, shaderObject, "u_MetallicTexture");
+    if (roughnessTex || metallicTex) {
+        status = tryCreateRoughnessMetalnessTexture(resources, metallicTex.get(), roughnessTex.get(), status);
         m_glMetallicRoughness.metallicRoughnessTexture = &m_glMetallicRoughnessTexture;
+        if (roughnessTex) resources.registerTexture(std::move(roughnessTex));
+        if (metallicTex) resources.registerTexture(std::move(metallicTex));
     }
 
     // Emissive
@@ -289,11 +455,16 @@ MStatus ExportableMaterialPBR::tryCreateRoughnessMetalnessTexture(ExportableReso
                                                                   const ExportableTexture *metallicTexture,
                                                                   const ExportableTexture *roughnessTexture,
                                                                   MStatus status) {
-    // TODO: Test this code!
-    if (!metallicTexture || roughnessTexture->glTexture == metallicTexture->glTexture) {
+    if (!metallicTexture && !roughnessTexture) {
+        return status;
+    }
+
+    if (!metallicTexture) {
         m_glMetallicRoughnessTexture.texture = roughnessTexture->glTexture;
     } else if (!roughnessTexture) {
         m_glMetallicRoughnessTexture.texture = metallicTexture->glTexture;
+    } else if (roughnessTexture->glTexture == metallicTexture->glTexture) {
+        m_glMetallicRoughnessTexture.texture = roughnessTexture->glTexture;
     } else {
         cerr << prefix << "WARNING: Merging roughness and metallic into one texture" << endl;
 
@@ -367,6 +538,8 @@ void ExportableMaterialPBR::loadAiStandard(
     auto &args = resources.arguments();
     args.assignName(m_glMaterial, shaderNode, "");
 
+    m_glMaterial.alphaMode = "OPAQUE";
+
     float opacityFactor = 1.f;
 
     auto hasOpacity = getScalar(shaderObject, "TransmissionWeight", opacityFactor);
@@ -391,6 +564,11 @@ void ExportableMaterialPBR::loadAiStandard(
     if (baseColorTexture) {
         m_glBaseColorTexture.texture = baseColorTexture;
         m_glMetallicRoughness.baseColorTexture = &m_glBaseColorTexture;
+        // If we have a texture, we generally want the factor to be 1.0 unless a weight is used
+        float baseWeight = 1.0f;
+        getScalar(shaderObject, "base", baseWeight);
+        m_glBaseColorFactor = {baseWeight, baseWeight, baseWeight, opacityFactor};
+        m_glMetallicRoughness.baseColorFactor = &m_glBaseColorFactor[0];
 
         unsigned baseColorWidth = baseColorTexture->source->getDimensions().first;
         unsigned baseColorHeight = baseColorTexture->source->getDimensions().second;
@@ -420,12 +598,19 @@ void ExportableMaterialPBR::loadAiStandard(
         m_glMaterial.metallicRoughness = &m_glMetallicRoughness;
     }
 
-    const auto roughnessTexture = ExportableTexture::tryCreate(resources, shaderObject, "specularRoughness");
-    const auto metallicTexture = ExportableTexture::tryCreate(resources, shaderObject, "metalness");
-    if (roughnessTexture || metallicTexture) {
-        status = tryCreateRoughnessMetalnessTexture(resources, metallicTexture.get(), roughnessTexture.get(), status);
-
+    auto roughnessTex = ExportableTexture::tryCreate(resources, shaderObject, "specularRoughness");
+    auto metallicTex = ExportableTexture::tryCreate(resources, shaderObject, "metalness");
+    if (roughnessTex || metallicTex) {
+        status = tryCreateRoughnessMetalnessTexture(resources, metallicTex.get(), roughnessTex.get(), status);
         m_glMetallicRoughness.metallicRoughnessTexture = &m_glMetallicRoughnessTexture;
+        if (roughnessTex) {
+            m_glMetallicRoughness.roughnessFactor = 1.0f;
+            resources.registerTexture(std::move(roughnessTex));
+        }
+        if (metallicTex) {
+            m_glMetallicRoughness.metallicFactor = 1.0f;
+            resources.registerTexture(std::move(metallicTex));
+        }
     }
 
     // Emissive color

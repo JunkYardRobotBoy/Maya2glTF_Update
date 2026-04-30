@@ -1,10 +1,14 @@
 #include "externals.h"
+#include <maya/MObjectHandle.h>
 
 #include "Arguments.h"
 #include "DagHelper.h"
 #include "ExportableMaterial.h"
+#include "ExportableMesh.h"
+#include "ExportableNode.h"
 #include "ExportableResources.h"
 #include "MayaException.h"
+#include "MeshIndices.h"
 #include "filesystem.h"
 
 ExportableResources::ExportableResources(const Arguments &args)
@@ -188,4 +192,65 @@ ExportableMaterial *ExportableResources::getDebugMaterial(const Float3 &hsv) {
     }
 
     return materialPtr.get();
+}
+
+void ExportableResources::registerTexture(std::unique_ptr<ExportableTexture> texture) {
+    m_textures.push_back(std::move(texture));
+}
+
+bool ExportableResources::MeshKey::operator<(const MeshKey &other) const {
+    const auto h1 = MObjectHandle(shape).hashCode();
+    const auto h2 = MObjectHandle(other.shape).hashCode();
+    if (h1 < h2) return true;
+    if (h2 < h1) return false;
+    if (shaderUuids < other.shaderUuids) return true;
+    if (other.shaderUuids < shaderUuids) return false;
+    return primitiveToShaderMap < other.primitiveToShaderMap;
+}
+
+ExportableMesh *ExportableResources::getMesh(ExportableScene &scene, ExportableNode &node, const MDagPath &shapeDagPath) {
+    MStatus status;
+    MObject shapeObj = shapeDagPath.node();
+    
+    if (!m_args.deduplicateMeshes) {
+        return nullptr; // Caller should create a new one
+    }
+
+    // To deduplicate, we need the shading signature for this instance
+    MFnMesh fnMesh(shapeObj, &status);
+    if (!status) return nullptr;
+
+    MeshKey key;
+    key.shape = shapeObj;
+    
+    // Get shading for this instance
+    MObjectArray shaderGroups;
+    MIntArray polyShaderMap;
+    status = fnMesh.getConnectedShaders(node.dagPath.instanceNumber(), shaderGroups, polyShaderMap);
+    if (status) {
+        key.shaderUuids.reserve(shaderGroups.length());
+        for (unsigned i = 0; i < shaderGroups.length(); ++i) {
+            MObject surfaceShader = DagHelper::findSourceNodeConnectedTo(shaderGroups[i], "surfaceShader");
+            if (!surfaceShader.isNull()) {
+                MFnDependencyNode shaderNode(surfaceShader);
+                key.shaderUuids.push_back(shaderNode.uuid().asString().asChar());
+            } else {
+                key.shaderUuids.push_back("");
+            }
+        }
+        
+        key.primitiveToShaderMap.reserve(polyShaderMap.length());
+        for (unsigned i = 0; i < polyShaderMap.length(); ++i) {
+            key.primitiveToShaderMap.push_back(polyShaderMap[i]);
+        }
+    }
+
+    auto &meshPtr = m_meshMap[key];
+    if (!meshPtr) {
+        meshPtr = std::make_unique<ExportableMesh>(scene, node, shapeDagPath);
+    } else {
+        cout << prefix << "Reusing mesh instance for shape " << fnMesh.partialPathName().asChar() << endl;
+    }
+
+    return meshPtr.get();
 }

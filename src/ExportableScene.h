@@ -13,6 +13,15 @@ typedef std::map<MDagPath, ExportableNode *, MDagPathComparer> OrphanNodes;
 
 typedef std::map<MDagPath, std::vector<GLTF::Accessor *>, MDagPathComparer> AccessorsPerDagPath;
 
+struct GpuInstancedNode {
+    ExportableNode *parent = nullptr;
+    ExportableMesh *mesh = nullptr;
+    std::vector<ExportableNode *> instances;
+    GLTF::Accessor *translationAccessor = nullptr;
+    GLTF::Accessor *rotationAccessor = nullptr;
+    GLTF::Accessor *scaleAccessor = nullptr;
+};
+
 // Maps each DAG path to the corresponding node
 // Owns and creates each node on the fly.
 class ExportableScene {
@@ -44,6 +53,12 @@ class ExportableScene {
     // Register a node without parent
     void registerOrphanNode(ExportableNode *node);
 
+    void processGpuInstancing();
+
+    const std::vector<GpuInstancedNode> &gpuInstancedNodes() const { return m_gpuInstancedNodes; }
+
+    std::vector<std::unique_ptr<GLTF::Accessor>> m_gpuAccessors;
+
     // static int distanceToRoot(MDagPath dagPath);
 
     const NodeTable &table() const { return m_table; }
@@ -62,4 +77,5 @@ class ExportableScene {
     NodeTransformCache m_initialTransformCache;
     NodeTransformCache m_currentTransformCache;
     OrphanNodes m_orphans;
+    std::vector<GpuInstancedNode> m_gpuInstancedNodes;
 };

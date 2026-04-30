@@ -40,11 +40,14 @@ class ExportableResources : public ExportableItem {
 
     GLTF::Texture *getTexture(GLTF::Image *image, GLTF::Sampler *sampler);
 
+    ExportableMesh *getMesh(class ExportableScene &scene, class ExportableNode &node, const MDagPath &shapeDagPath);
+
     // std::map<MayaFilename, std::unique_ptr<GLTF::Image>> imageMap;
     // std::map<MayaNodeName, std::unique_ptr<GLTF::Texture>> textureMap;
     // std::map<MayaNodeName, std::unique_ptr<GLTF::Sampler>> samplerMap;
 
     void getAllAccessors(std::vector<GLTF::Accessor *> &accessors);
+    void registerTexture(std::unique_ptr<class ExportableTexture> texture);
 
   private:
     std::map<MayaNodeName, std::unique_ptr<ExportableMaterial>> m_materialMap;
@@ -54,6 +57,20 @@ class ExportableResources : public ExportableItem {
     std::map<std::pair<GLTF::Image *, GLTF::Sampler *>,
              std::unique_ptr<GLTF::Texture>>
         m_TextureMap;
+
+    struct MeshKey {
+        MObject shape;
+        // For now, we only deduplicate if the shading is also the same.
+        // We'll use a simple representation of shading.
+        std::vector<std::string> shaderUuids;
+        std::vector<int> primitiveToShaderMap;
+
+        bool operator<(const MeshKey &other) const;
+    };
+
+    std::map<MeshKey, std::unique_ptr<ExportableMesh>> m_meshMap;
+
+    std::vector<std::unique_ptr<class ExportableTexture>> m_textures;
 
     ExportableDefaultMaterial m_defaultMaterial;
     const Arguments &m_args;

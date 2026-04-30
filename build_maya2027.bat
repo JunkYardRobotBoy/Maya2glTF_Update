@@ -1,8 +1,8 @@
 @echo off
 :: Direct paths provided by user
-SET "MAYA_VERSION=2026"
-SET "MAYA_DEVKIT_BASE=C:\Users\gerar\Desktop\SOFTWARE\Autodesk_Maya_2026_DEVKIT_Windows\devkitBase\devkit"
-SET "MAYA_LOCATION=C:\Program Files\Autodesk\Maya2026"
+SET "MAYA_VERSION=2027"
+SET "MAYA_DEVKIT_BASE=C:\Users\gerar\Desktop\SOFTWARE\Autodesk_Maya_2027_DEVKIT_Windows\devkitBase\devkit"
+SET "MAYA_LOCATION=C:\Program Files\Autodesk\Maya2027"
 
 :: Set Environment Variables
 SET "MAYA_LOCATION_%MAYA_VERSION%=%MAYA_LOCATION%"

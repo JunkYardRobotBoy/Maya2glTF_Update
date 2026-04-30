@@ -1,0 +1,22 @@
+global proc maya2glTF_setupShelf() {
+    string $currentShelf = `tabLayout -q -selectTab $gShelfTopLevel`;
+    setParent $currentShelf;
+
+    // The user requested Maya2glTF2026.png located in maya/prefs/icons/
+    string $icon = "Maya2glTF2026.png";
+    string $command = "source \"maya2glTF_UI.mel\"; maya2glTF_UI();";
+    string $label = "Maya2glTF";
+
+    shelfButton
+        -annotation "Launch Maya2glTF Exporter"
+        -image1 $icon
+        -command $command
+        -label $label
+        -imageOverlayLabel "glTF"
+        -overlayLabelBackColor 0.2 0.4 0.6 0.8
+        -overlayLabelColor 1.0 1.0 1.0;
+    
+    print("Maya2glTF shelf button created on shelf: " + $currentShelf + "\n");
+}
+
+maya2glTF_setupShelf();

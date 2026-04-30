@@ -1,3 +1,4 @@
+source "maya2glTF_common.mel";
 // --- Helper Procs for Animation Management ---
 global proc maya2glTF_AddClip() {
     string $name = `textField -q -text tf_clipName`;
@@ -18,12 +19,12 @@ global proc maya2glTF_RemoveClip() {
 global proc maya2glTF_UI() {
     if (`window -exists maya2glTF_Win`) deleteUI maya2glTF_Win;
 
-    window -title "Maya2glTF - Exporter 2026" -widthHeight 450 850 maya2glTF_Win;
-    scrollLayout -childResizable true;Å
+    window -title "Maya2glTF - Pro Exporter 2027" -widthHeight 450 850 maya2glTF_Win;
+    scrollLayout -childResizable true;
     columnLayout -adjustableColumn true -rowSpacing 5;
 
     // --- 1. Asset & Output Identification ---
-    frameLayout -label "Asset Identification" -collapsable true -marginWidth 10;
+    frameLayout -label "Asset Identification" -collapsable true;
         columnLayout -adjustableColumn true -rowSpacing 5;
             rowLayout -numberOfColumns 2 -columnWidth2 100 300 -adjustableColumn 2;
                 text -label "Scene Name:";
@@ -35,18 +36,21 @@ global proc maya2glTF_UI() {
             setParent ..;
             rowLayout -numberOfColumns 3 -columnWidth3 100 250 60 -adjustableColumn 2;
                 text -label "Output Folder: ";
-                textField -text `workspace -q -rd` tf_outputDir;
-                button -label "Browse" -command "string $dir[] = `fileDialog2 -fileMode 3`; if(size($dir)>0) textField -e -text $dir[0] tf_outputDir;";
+                string $outDir = `workspace -q -rd`;
+                if (`optionVar -exists "maya2glTF_LastOutputDir"`) $outDir = `optionVar -q "maya2glTF_LastOutputDir"`;
+                textField -text $outDir tf_outputDir;
+                button -label "Browse" -command "string $dir[] = `fileDialog2 -fileMode 3`; if(size($dir)>0) { textField -e -text $dir[0] tf_outputDir; optionVar -sv \"maya2glTF_LastOutputDir\" $dir[0]; }";
             setParent ..;
         setParent ..;
     setParent ..;
 
     // --- 2. Shader & Workflow Tools ---
-    frameLayout -label "PBR Shader & Workflow Tools" -collapsable true -marginWidth 10;
+    frameLayout -label "PBR Shader & Workflow Tools" -collapsable true;
         columnLayout -adjustableColumn true -rowSpacing 8;
-            button -label "assign PBR shader to selection" -backgroundColor 0.95 0.75 0.1 -command "maya2glTF_assignPbrShader();";
+            button -label "Assign PBR Shader to Selection" -command "maya2glTF_assignPbrShader();";
+            button -label "Convert MASH to Instances" -command "python(\"import maya2glTF_mash; maya2glTF_mash.createMashInstances()\")";
             separator -height 10 -style "in";
-            button -label "ignore selected mesh deformers" -backgroundColor 0.95 0.75 0.5 -command "maya2glTF_ignoreSelectedDeformers();";
+            button -label "Ignore Selected Mesh Deformers" -command "maya2glTF_ignoreSelectedDeformers();";
             
             text -label "Manual Ignore Deformers (space separated):" -align "left";
             textField -placeholderText "blendShape1 skinCluster2" tf_ignoreDeformers;
@@ -54,11 +58,12 @@ global proc maya2glTF_UI() {
     setParent ..;
 
     // --- 3. Filter & Mesh Settings ---
-    frameLayout -label "Mesh & Scene Filters" -collapsable true -marginWidth 10;
+    frameLayout -label "Mesh & Scene Filters" -collapsable true;
         columnLayout -adjustableColumn true -rowSpacing 5;
             checkBox -label "Selected nodes only" -value 0 chk_selectedOnly;
             checkBox -label "Visible nodes only" -value 1 chk_visibleOnly;
             checkBox -label "Export as Binary (.glb)" -value 1 chk_glb;
+            checkBox -label "GPU Instancing (EXT_mesh_gpu_instancing)" -value 0 chk_gpuInstancing;
             
             rowLayout -numberOfColumns 2 -columnWidth2 150 100;
                 text -label "Scale Factor:";
@@ -67,14 +72,13 @@ global proc maya2glTF_UI() {
 
             separator -height 10 -style "in";
             
-            // --- Extra Flags Field ---
             text -label "Extra Arguments / Flags:" -align "left";
             textField -placeholderText "-cm -ssm -mts" tf_extraFlags;
         setParent ..;
     setParent ..;
 
     // --- 4. Animation Settings ---
-    frameLayout -label "Animation & Clips" -collapsable true -marginWidth 10;
+    frameLayout -label "Animation & Clips" -collapsable true;
         columnLayout -adjustableColumn true -rowSpacing 5;
             rowLayout -numberOfColumns 2 -columnWidth2 150 100;
                 text -label "Target Frame Rate (FPS):";
@@ -92,8 +96,8 @@ global proc maya2glTF_UI() {
             setParent ..;
 
             rowLayout -numberOfColumns 2 -columnWidth2 200 200 -adjustableColumn 1;
-                button -label "Add Clip"  -backgroundColor 0.2 0.8 0.4 -c "maya2glTF_AddClip";
-                button -label "Remove Selected" -backgroundColor 0.7 0.2 0.2 -c "maya2glTF_RemoveClip";
+                button -label "Add Clip" -c "maya2glTF_AddClip";
+                button -label "Remove Selected" -c "maya2glTF_RemoveClip";
             setParent ..;
         setParent ..;
     setParent ..;
@@ -107,24 +111,25 @@ global proc maya2glTF_UI() {
 
 // --- Export Execution ---
 global proc maya2glTF_ExecuteExport() {
+    string $outDir = `textField -q -text tf_outputDir`;
+    optionVar -sv "maya2glTF_LastOutputDir" $outDir;
+
     string $cmd = "maya2glTF";
 
-    // Identification
-    $cmd += (" -of \"" + `textField -q -text tf_outputDir` + "\"");
+    $cmd += (" -of \"" + $outDir + "\"");
     $cmd += (" -sn \"" + `textField -q -text tf_sceneName` + "\"");
     
     string $cpr = `textField -q -text tf_copyright`;
     if ($cpr != "") $cmd += (" -cpr \"" + $cpr + "\"");
 
-    // Mesh Filters & Scale
     if (`checkBox -q -value chk_selectedOnly`) $cmd += " -sno";
     if (`checkBox -q -value chk_visibleOnly`)  $cmd += " -vno";
     if (`checkBox -q -value chk_glb`)          $cmd += " -glb";
+    if (`checkBox -q -value chk_gpuInstancing`) $cmd += " -gpu";
     
     float $scale = `floatField -q -value ff_scaleFactor`;
     $cmd += (" -sf " + $scale);
 
-    // Deformers
     string $ignore = `textField -q -text tf_ignoreDeformers`;
     if ($ignore != "") {
         string $deformers[];
@@ -132,11 +137,9 @@ global proc maya2glTF_ExecuteExport() {
         for ($d in $deformers) $cmd += (" -imd \"" + $d + "\"");
     }
 
-    // Animation
     float $fps = `floatField -q -value ff_animFPS`;
     $cmd += (" -afr " + $fps);
 
-    // Multi-Clip Logic
     string $allClips[] = `textScrollList -q -allItems tsl_clipList`;
     for ($clip in $allClips) {
         string $tokens[];
@@ -146,7 +149,6 @@ global proc maya2glTF_ExecuteExport() {
         $cmd += (" -aet " + $tokens[2]);
     }
 
-    // --- Append Extra Flags ---
     string $extra = `textField -q -text tf_extraFlags`;
     if ($extra != "") {
         $cmd += (" " + $extra);
@@ -156,5 +158,4 @@ global proc maya2glTF_ExecuteExport() {
     eval($cmd);
 }
 
-// Launch the UI
 maya2glTF_UI();

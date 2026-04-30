@@ -57,4 +57,6 @@ class ExportableAsset {
     template <typename T>
     void dumpAccessorComponentValues(const GLTF::Accessor *accessor,
                                      int fileIndex, bool isInteger) const;
+
+    void patchGpuInstancing(std::string &json) const;
 };

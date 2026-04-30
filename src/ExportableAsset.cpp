@@ -64,6 +64,10 @@ ExportableAsset::ExportableAsset(const Arguments &args) : m_resources{args}, m_s
         m_scene.getNode(dagPath);
     }
 
+    if (args.gpuInstancing) {
+        m_scene.processGpuInstancing();
+    }
+
     if (!args.keepShapeNodes) {
         m_scene.mergeRedundantShapeNodes();
     }
@@ -172,7 +176,12 @@ void ExportableAsset::save() {
     // Last try, this will throw an exception if it fails.
     create_directories(outputFolder);
 
-    const auto allAccessors = m_glAsset.getAllAccessors();
+    auto allAccessors = m_glAsset.getAllAccessors();
+
+    // Add GPU instancing accessors
+    for (auto &acc : m_scene.m_gpuAccessors) {
+        allAccessors.push_back(acc.get());
+    }
 
     if (args.dumpAccessorComponents) {
         dumpAccessorComponents(allAccessors);
@@ -316,6 +325,10 @@ void ExportableAsset::save() {
     jsonWriter.EndObject();
 
     m_rawJsonString = jsonStringBuffer.GetString();
+
+    if (args.gpuInstancing) {
+        patchGpuInstancing(m_rawJsonString);
+    }
 
     const auto outputFilename = args.sceneName + "." + (args.glb ? args.glbFileExtension : args.gltfFileExtension);
     const auto outputPath = outputFolder / outputFilename.asChar();
@@ -577,4 +590,77 @@ void ExportableAsset::dumpAccessorComponents(const std::vector<GLTF::Accessor *>
 
         ++fileIndex;
     }
+}
+
+void ExportableAsset::patchGpuInstancing(std::string &json) const {
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    if (doc.HasParseError()) return;
+
+    auto& allocator = doc.GetAllocator();
+
+    // 1. Add extension to extensionsUsed
+    if (!doc.HasMember("extensionsUsed")) {
+        doc.AddMember("extensionsUsed", rapidjson::Value(rapidjson::kArrayType), allocator);
+    }
+    bool foundExt = false;
+    for (auto& ext : doc["extensionsUsed"].GetArray()) {
+        if (std::string(ext.GetString()) == "EXT_mesh_gpu_instancing") {
+            foundExt = true;
+            break;
+        }
+    }
+    if (!foundExt) {
+        doc["extensionsUsed"].PushBack("EXT_mesh_gpu_instancing", allocator);
+    }
+
+    // 2. Map Accessor Names to Indices
+    std::map<std::string, int> accessorMap;
+    if (doc.HasMember("accessors")) {
+        int idx = 0;
+        for (auto& acc : doc["accessors"].GetArray()) {
+            if (acc.HasMember("name")) {
+                accessorMap[acc["name"].GetString()] = idx;
+            }
+            idx++;
+        }
+    }
+
+    // 3. Patch Nodes
+    if (doc.HasMember("nodes")) {
+        auto nodes = doc["nodes"].GetArray();
+        for (auto& gin : m_scene.gpuInstancedNodes()) {
+            // Find node by name
+            for (auto& node : nodes) {
+                if (node.HasMember("name") && std::string(node["name"].GetString()) == gin.parent->name()) {
+                    // Add Extension
+                    if (!node.HasMember("extensions")) {
+                        node.AddMember("extensions", rapidjson::Value(rapidjson::kObjectType), allocator);
+                    }
+                    rapidjson::Value extObj(rapidjson::kObjectType);
+                    rapidjson::Value attrObj(rapidjson::kObjectType);
+
+                    if (gin.translationAccessor && accessorMap.count(gin.translationAccessor->name)) {
+                        attrObj.AddMember("TRANSLATION", accessorMap[gin.translationAccessor->name], allocator);
+                    }
+                    if (gin.rotationAccessor && accessorMap.count(gin.rotationAccessor->name)) {
+                        attrObj.AddMember("ROTATION", accessorMap[gin.rotationAccessor->name], allocator);
+                    }
+                    if (gin.scaleAccessor && accessorMap.count(gin.scaleAccessor->name)) {
+                        attrObj.AddMember("SCALE", accessorMap[gin.scaleAccessor->name], allocator);
+                    }
+
+                    extObj.AddMember("attributes", attrObj, allocator);
+                    node["extensions"].AddMember("EXT_mesh_gpu_instancing", extObj, allocator);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Serialize back
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    doc.Accept(writer);
+    json = buffer.GetString();
 }

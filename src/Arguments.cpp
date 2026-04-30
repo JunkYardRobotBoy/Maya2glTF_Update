@@ -102,6 +102,8 @@ const auto matPrecision = "prm";
 
 const auto keepObjectNamespace = "kon";
 
+const auto skipMeshDeduplication = "smd";
+const auto gpuInstancing = "gpu";
 } // namespace flag
 
 inline const char *getArgTypeName(const MSyntax::MArgType argType) {
@@ -219,6 +221,9 @@ SyntaxFactory::SyntaxFactory() {
     registerFlag(ss, flag::matPrecision, "matPrecision", kDouble);
 
     registerFlag(ss, flag::keepObjectNamespace, "keepMayaNamespaces", kNoArg);
+
+    registerFlag(ss, flag::skipMeshDeduplication, "skipMeshDeduplication", kNoArg);
+    registerFlag(ss, flag::gpuInstancing, "extGpuInstancing", kNoArg);
 
     m_usage = ss.str();
 }
@@ -520,6 +525,9 @@ Arguments::Arguments(const MArgList &args, const MSyntax &syntax) {
     adb.optional(flag::texPrecision, texPrecision);
     adb.optional(flag::sclPrecision, sclPrecision);
     adb.optional(flag::matPrecision, matPrecision);
+
+    deduplicateMeshes = !adb.isFlagSet(flag::skipMeshDeduplication);
+    gpuInstancing = adb.isFlagSet(flag::gpuInstancing);
 
     if (!adb.optional(flag::sceneName, sceneName)) {
         // Use filename without extension of current scene file.

@@ -253,8 +253,14 @@ class Arguments {
     /** Consider a scaling animation path as constant if all values are below this threshold */
     double constantScalingThreshold = 1e-9;
 
-    /** Consider a blend shape weight animation path as constant if all values are below this threshold */
+    /** consider a blend shape weight animation path as constant if all values are below this threshold */
     double constantWeightsThreshold = 1e-9;
+
+    /** Deduplicate meshes that share the same shape and shading? */
+    bool deduplicateMeshes = true;
+
+    /** Use EXT_mesh_gpu_instancing extension? */
+    bool gpuInstancing = false;
 
     /** Export precisions */
     double posPrecision = 1e9;

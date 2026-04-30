@@ -91,6 +91,8 @@ class ExportableMaterialPBR : public ExportableMaterialBasePBR {
     void convert(ExportableResources &resources, const MObject &shaderObject);
     void loadAiStandard(ExportableResources &resources,
                         const MFnDependencyNode &shaderNode);
+    void loadOpenPBR(ExportableResources &resources,
+                      const MFnDependencyNode &shaderNode);
     MStatus
     tryCreateRoughnessMetalnessTexture(ExportableResources &resources,
                                       const ExportableTexture* metallicTexture,

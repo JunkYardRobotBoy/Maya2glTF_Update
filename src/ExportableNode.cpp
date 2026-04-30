@@ -1,4 +1,5 @@
 #include "externals.h"
+#include <maya/MAnimUtil.h>
 
 #include "Arguments.h"
 #include "DagHelper.h"
@@ -128,8 +129,13 @@ void ExportableNode::load(ExportableScene &scene, NodeTransformCache &transformC
 
         if (status && shapeDagPath.hasFn(MFn::kMesh)) {
             // The shape is a mesh
-            m_mesh = std::make_unique<ExportableMesh>(scene, *this, shapeDagPath);
-            m_mesh->attachToNode(pNode);
+            auto* cachedMesh = resources.getMesh(scene, *this, shapeDagPath);
+            if (cachedMesh) {
+                cachedMesh->attachToNode(pNode);
+            } else {
+                m_mesh = std::make_unique<ExportableMesh>(scene, *this, shapeDagPath);
+                m_mesh->attachToNode(pNode);
+            }
         }
     }
 
@@ -197,13 +203,46 @@ bool ExportableNode::tryMergeRedundantShapeNode() {
     if (transform->type != GLTF::Node::Transform::TRS)
         return false;
 
-    auto *trs = static_cast<const GLTF::Node::TransformTRS *>(transform);
-    if (trs->translation[0] != 0 || trs->translation[1] != 0 || trs->translation[2] != 0)
+    // Check if either node is animated. Merging animated nodes is complex, so we skip it.
+    if (this->isAnimated() || parentNode->isAnimated())
         return false;
-    if (trs->rotation[0] != 0 || trs->rotation[1] != 0 || trs->rotation[2] != 0 || trs->rotation[3] != 1)
-        return false;
-    if (trs->scale[0] != 1 || trs->scale[1] != 1 || trs->scale[2] != 1)
-        return false;
+
+    auto *parentTrs = static_cast<GLTF::Node::TransformTRS *>(glParentNode.transform);
+    auto *childTrs = static_cast<const GLTF::Node::TransformTRS *>(transform);
+
+    // Bake the child's TRS into the parent's TRS.
+    MTransformationMatrix childMatrix;
+    childMatrix.setTranslation(MVector(childTrs->translation[0], childTrs->translation[1], childTrs->translation[2]), MSpace::kPostTransform);
+    childMatrix.setRotationQuaternion(childTrs->rotation[0], childTrs->rotation[1], childTrs->rotation[2], childTrs->rotation[3]);
+    double scale[3] = {childTrs->scale[0], childTrs->scale[1], childTrs->scale[2]};
+    childMatrix.setScale(scale, MSpace::kPostTransform);
+
+    MTransformationMatrix parentMatrix;
+    parentMatrix.setTranslation(MVector(parentTrs->translation[0], parentTrs->translation[1], parentTrs->translation[2]), MSpace::kPostTransform);
+    parentMatrix.setRotationQuaternion(parentTrs->rotation[0], parentTrs->rotation[1], parentTrs->rotation[2], parentTrs->rotation[3]);
+    double pScale[3] = {parentTrs->scale[0], parentTrs->scale[1], parentTrs->scale[2]};
+    parentMatrix.setScale(pScale, MSpace::kPostTransform);
+
+    MMatrix combined = childMatrix.asMatrix() * parentMatrix.asMatrix();
+    MTransformationMatrix finalMatrix(combined);
+
+    MVector t = finalMatrix.getTranslation(MSpace::kPostTransform);
+    parentTrs->translation[0] = static_cast<float>(t.x);
+    parentTrs->translation[1] = static_cast<float>(t.y);
+    parentTrs->translation[2] = static_cast<float>(t.z);
+
+    double q[4];
+    finalMatrix.getRotationQuaternion(q[0], q[1], q[2], q[3]);
+    parentTrs->rotation[0] = static_cast<float>(q[0]);
+    parentTrs->rotation[1] = static_cast<float>(q[1]);
+    parentTrs->rotation[2] = static_cast<float>(q[2]);
+    parentTrs->rotation[3] = static_cast<float>(q[3]);
+
+    double s[3];
+    finalMatrix.getScale(s, MSpace::kPostTransform);
+    parentTrs->scale[0] = static_cast<float>(s[0]);
+    parentTrs->scale[1] = static_cast<float>(s[1]);
+    parentTrs->scale[2] = static_cast<float>(s[2]);
 
     cout << prefix << "Shape-only node '" << name() << "' is redundant, moving its shapes to parent node '"
          << parentNode->name() << "'" << endl;
@@ -230,4 +269,8 @@ void ExportableNode::getAllAccessors(std::vector<GLTF::Accessor *> &accessors) c
     if (m_mesh) {
         m_mesh->getAllAccessors(accessors);
     }
+}
+
+bool ExportableNode::isAnimated() const {
+    return MAnimUtil::isAnimated(dagPath);
 }

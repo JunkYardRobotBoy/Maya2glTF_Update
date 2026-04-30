@@ -80,8 +80,13 @@ ExportableTexture::tryCreate(ExportableResources &resources, const MObject &obj,
 GLTF::Texture *ExportableTexture::tryLoad(ExportableResources &resources,
                                           const MObject &obj,
                                           const char *attributeName) {
-    const auto instance = tryCreate(resources, obj, attributeName);
-    return instance ? instance->glTexture : nullptr;
+    auto instance = tryCreate(resources, obj, attributeName);
+    if (instance) {
+        auto texture = instance->glTexture;
+        resources.registerTexture(std::move(instance));
+        return texture;
+    }
+    return nullptr;
 }
 
 ExportableTexture::~ExportableTexture() = default;

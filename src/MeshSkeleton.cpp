@@ -57,7 +57,7 @@ MeshSkeleton::MeshSkeleton(ExportableScene &scene, const ExportableNode &node,
         // Get the MPlug for input[index].inputGeometry
         // Note: This is used over 'inputShapeAtIndex' so it includes any
         // potential vertex tweaks after the shape but before the skinCluster
-        MPlug inputGeoPlug = fnSkin.findPlug("input", &status); // .input
+        MPlug inputGeoPlug = fnSkin.findPlug("input", false, &status); // .input
         THROW_ON_FAILURE(status);
         inputGeoPlug = inputGeoPlug.elementByPhysicalIndex(inputShapeIndex, &status); // .input[0]
         THROW_ON_FAILURE(status);

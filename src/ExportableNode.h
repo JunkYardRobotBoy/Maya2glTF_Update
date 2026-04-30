@@ -43,6 +43,8 @@ class ExportableNode : public ExportableObject {
     // nullptr for root nodes.
     ExportableNode *parentNode = nullptr;
 
+    std::vector<ExportableNode *> children;
+
     NodeTransformState initialTransformState;
     NodeTransformState currentTransformState;
 
@@ -68,6 +70,9 @@ class ExportableNode : public ExportableObject {
     // If this node is a redundant shape node, move the mesh to the parent node,
     // and return true.
     bool tryMergeRedundantShapeNode();
+
+    // Returns true if this node is animated.
+    bool isAnimated() const;
 
     void getAllAccessors(std::vector<GLTF::Accessor *> &accessors) const;
 
