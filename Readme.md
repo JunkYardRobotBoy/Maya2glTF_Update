@@ -6,7 +6,7 @@ If you believe this plugin is good enough to request Github Sponsoring, please s
 
 ## News
 
-* Version [1.5.0 released](https://github.com/iimachines/Maya2glTF/releases) for Windows! 
+* Version [1.6.0 released](https://github.com/JunkYardRobotBoy/Maya2glTF_Update/releases/tag/1.6) for Windows Maya 2027! 
 
 ![Maya Tiger screenshot](/img/tiger-wim@koetan.gif)
 
