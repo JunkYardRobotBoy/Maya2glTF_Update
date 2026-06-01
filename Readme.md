@@ -19,7 +19,7 @@ If you believe this plugin is good enough to request Github Sponsoring, please s
 - *Windows 10 x64*
   - install the [Microsoft Visual C++ redistributables](https://aka.ms/vs/16/release/vc_redist.x64.exe).
     - on many systems this is already installed, so you might want to skip this step.
-  - download the desired [release](https://github.com/iimachines/Maya2glTF/releases)
+  - download the desired [release](https://github.com/JunkYardRobotBoy/Maya2glTF_Update/releases/tag/1.6)
   - extract the downloaded `zip` file to any location (e.g. your desktop)
   - open the created `maya2glTF` folder
   - double click on the `deploy` batch file
