@@ -19,7 +19,7 @@ global proc maya2glTF_UI() {
     if (`window -exists maya2glTF_Win`) deleteUI maya2glTF_Win;
 
     window -title "Maya2glTF - Exporter 2026" -widthHeight 450 850 maya2glTF_Win;
-    scrollLayout -childResizable true;Å
+    scrollLayout -childResizable true;
     columnLayout -adjustableColumn true -rowSpacing 5;
 
     // --- 1. Asset & Output Identification ---
