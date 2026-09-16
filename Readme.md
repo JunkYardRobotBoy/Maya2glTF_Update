@@ -31,8 +31,13 @@ If you believe this plugin is good enough to request Github Sponsoring, please s
 ## Usage
 
   - load a scene
-  - in the Maya script window, type `maya2glTF_UI` to launch the UI.
-    - You might want to select the `maya2glTF_UI` script text and drag it using the middle-mouse-button to the `Custom` shelf, or even better, make a `glTF` shelf...
+  - in the Maya go to  windows , setting/preferences, plugin manager
+    - find maya2glTF.mll and set two checkbox of Loaded and auto Load
+  
+  - restart the Maya and find gltf tab in the shelf of the Maya
+ 
+  - click on the export to gltf on the shelf (this open the plugin UI)
+  
   - select the meshes and cameras you want export
     - or click the `select all polygon meshes` button
   - select the desired animation clips source using the dropdown box
