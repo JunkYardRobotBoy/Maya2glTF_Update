@@ -1,3 +1,13 @@
+
+source "maya2glTF_assignPbrShader.mel";
+source "maya2glTF_createPbrSpheres.mel";
+source "maya2glTF_exportAllScenes.mel";
+source "maya2glTF_exportClipScenes.mel";
+source "maya2glTF_logicalParents.mel";
+source "maya2glTF_pasteKeyInScenes.mel";
+source "maya2glTF_playblastClipScenes.mel";
+
+
 // --- Helper Procs for Animation Management ---
 global proc maya2glTF_AddClip() {
     string $name = `textField -q -text tf_clipName`;
