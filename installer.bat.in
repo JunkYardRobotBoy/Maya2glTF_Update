@@ -1,0 +1,87 @@
+@echo off
+setlocal
+
+echo ============================================
+echo   Maya2glTF Installer (Maya @MAYA_VERSION@)
+echo ============================================
+
+set "MAYA_VERSION=@MAYA_VERSION@"
+set "PLUGIN_FILE=@PLUGIN_FILE_NAME@"
+set "PDB_FILE=@PROJECT_NAME@.pdb"
+
+:: Files are copied from the folder this installer lives in (the redist folder).
+set "SRC=%~dp0"
+
+:: Locate the user's Documents folder
+set "USER_DOCS="
+for /f "tokens=2*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders" /v Personal 2^>nul ^| findstr /i "Personal"') do (
+    set "USER_DOCS=%%B"
+)
+if not defined USER_DOCS set "USER_DOCS=%USERPROFILE%\Documents"
+
+set "MAYA_USER_DIR=%USER_DOCS%\maya"
+set "MAYA_PLUGIN_DIR=%MAYA_USER_DIR%\%MAYA_VERSION%\plug-ins"
+set "MAYA_SCRIPTS_DIR=%MAYA_USER_DIR%\scripts"
+set "MAYA_PBR_DIR=%MAYA_USER_DIR%\maya2glTF\PBR"
+set "MAYA_PREFS_DIR=%MAYA_USER_DIR%\%MAYA_VERSION%\prefs"
+
+echo Installing from:
+echo   %SRC%
+echo Installing to:
+echo   %MAYA_PLUGIN_DIR%
+echo   %MAYA_SCRIPTS_DIR%
+echo   %MAYA_PBR_DIR%
+echo   %MAYA_PREFS_DIR%
+echo.
+
+if not exist "%SRC%%PLUGIN_FILE%" (
+    echo ERROR: %PLUGIN_FILE% not found next to this installer. Build the plugin first.
+    pause
+    exit /b 1
+)
+
+mkdir "%MAYA_PLUGIN_DIR%" >nul 2>&1
+mkdir "%MAYA_SCRIPTS_DIR%" >nul 2>&1
+mkdir "%MAYA_PBR_DIR%" >nul 2>&1
+mkdir "%MAYA_PREFS_DIR%" >nul 2>&1
+
+set "FAILED=0"
+call :copyfile "%SRC%%PLUGIN_FILE%" "%MAYA_PLUGIN_DIR%\"
+if exist "%SRC%%PDB_FILE%" call :copyfile "%SRC%%PDB_FILE%" "%MAYA_PLUGIN_DIR%\"
+call :copyfile "%SRC%maya2glTF_version.mel" "%MAYA_SCRIPTS_DIR%\"
+call :copytree "%SRC%scripts" "%MAYA_SCRIPTS_DIR%\"
+call :copytree "%SRC%renderData" "%MAYA_PBR_DIR%\"
+call :copytree "%SRC%prefs" "%MAYA_PREFS_DIR%\"
+
+echo.
+if "%FAILED%"=="0" (
+    echo Installation complete!
+) else (
+    echo Installation finished with errors - see messages above.
+)
+pause
+exit /b %FAILED%
+
+:copyfile
+xcopy /y /q "%~1" "%~2" >nul
+if errorlevel 1 (
+    echo ERROR: failed to copy %~1
+    set "FAILED=1"
+) else (
+    echo   copied %~nx1
+)
+goto :eof
+
+:copytree
+if not exist "%~1" (
+    echo   skipped %~1 ^(not found^)
+    goto :eof
+)
+xcopy /y /s /e /i /q "%~1" "%~2" >nul
+if errorlevel 1 (
+    echo ERROR: failed to copy %~1
+    set "FAILED=1"
+) else (
+    echo   copied %~nx1\
+)
+goto :eof

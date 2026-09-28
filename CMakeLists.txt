@@ -6,14 +6,17 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ---------------------------------------------------------------------------
+# Maya Devkit (AUTOMATIC DETECTION)
+# ---------------------------------------------------------------------------
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/modules")
-
 find_package(Maya REQUIRED)
 
 include(ExternalProject)
 
-# COLLADA2GLTF
-# We only need to build the GLTF sub-library, hence the SOURCE_SUBDIR
+# ---------------------------------------------------------------------------
+# COLLADA2GLTF External Project
+# ---------------------------------------------------------------------------
 ExternalProject_Add(COLLADA2GLTF
   GIT_REPOSITORY https://github.com/iimachines/COLLADA2GLTF
   GIT_TAG Maya2glTF
@@ -65,6 +68,9 @@ ExternalProject_Add(filesystem
   INSTALL_COMMAND ""
 )
 
+# ---------------------------------------------------------------------------
+# INCLUDE PATHS
+# ---------------------------------------------------------------------------
 set(GLTF_INCLUDE_DIR          "${CMAKE_BINARY_DIR}/COLLADA2GLTF/src/COLLADA2GLTF/GLTF/include")
 set(DRACO_INCLUDE_DIR         "${CMAKE_BINARY_DIR}/COLLADA2GLTF/src/COLLADA2GLTF/GLTF/dependencies/draco/src")
 set(RAPIDJSON_INCLUDE_DIR     "${CMAKE_BINARY_DIR}/COLLADA2GLTF/src/COLLADA2GLTF/GLTF/dependencies/rapidjson/include")
@@ -76,22 +82,19 @@ ExternalProject_Get_Property(COLLADA2GLTF binary_dir)
 set(GLTF_LIBRARY_DIR "${binary_dir}/${CMAKE_BUILD_TYPE}") 
 set(DRACO_LIBRARY_DIR "${binary_dir}/dependencies/draco/${CMAKE_BUILD_TYPE}") 
 
+# ---------------------------------------------------------------------------
+# Versioning
+# ---------------------------------------------------------------------------
 execute_process(
-COMMAND
-    git rev-parse --short HEAD
-RESULT_VARIABLE
-    GIT_SHORT_HASH_RESULT
-OUTPUT_VARIABLE
-    GIT_SHORT_HASH)
+  COMMAND git rev-parse --short HEAD
+  OUTPUT_VARIABLE GIT_SHORT_HASH
+)
 string(REGEX REPLACE "\n$" "" GIT_SHORT_HASH "${GIT_SHORT_HASH}")
 
 execute_process(
-COMMAND
-    git tag -l --points-at HEAD
-RESULT_VARIABLE
-    GIT_TAG_RESULT
-OUTPUT_VARIABLE
-    GIT_TAG)
+  COMMAND git tag -l --points-at HEAD
+  OUTPUT_VARIABLE GIT_TAG
+)
 string(REGEX REPLACE "\n$" "" GIT_TAG "${GIT_TAG}")
 
 if(NOT GIT_TAG)
@@ -114,6 +117,9 @@ CONFIGURE_FILE(
 
 file(GLOB SOURCES "src/*.cpp" "src/*.h" "src/*.c")
 
+# ---------------------------------------------------------------------------
+# MSVC Precompiled Headers
+# ---------------------------------------------------------------------------
 if (MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Yuexternals.h")
   set_source_files_properties(src/externals.cpp PROPERTIES COMPILE_FLAGS "/Ycexternals.h")
@@ -121,6 +127,9 @@ if (MSVC)
   set_source_files_properties(src/PolarDecomposition.c  PROPERTIES COMPILE_FLAGS "/Y-")
 endif()
 
+# ---------------------------------------------------------------------------
+# Include + Link Directories
+# ---------------------------------------------------------------------------
 include_directories(
   ${GLTF_INCLUDE_DIR}
   ${DRACO_INCLUDE_DIR}
@@ -138,6 +147,9 @@ link_directories(
   ${DRACO_LIBRARY_DIR}
 )
 
+# ---------------------------------------------------------------------------
+# Build Plugin
+# ---------------------------------------------------------------------------
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
 add_dependencies(${PROJECT_NAME}
@@ -149,6 +161,9 @@ add_dependencies(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME} ${MAYA_LIBRARIES} GLTF draco)
 
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
 if(MSVC)
   GET_FILENAME_COMPONENT(USER_DOCUMENTS "[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders;Personal]" ABSOLUTE CACHE)
   message("-- Found user documents folder = ${USER_DOCUMENTS}")
@@ -162,29 +177,38 @@ if(MSVC)
     COMMAND xcopy /y /s /i "$<SHELL_PATH:${PROJECT_SOURCE_DIR}/maya/prefs/*.*>" "${MAYA_OUTPUT_DIR}/${MAYA_VERSION}/prefs/>"
     COMMAND if exist "$<SHELL_PATH:$<TARGET_PDB_FILE:maya2glTF>>" (xcopy /y /c "$<SHELL_PATH:$<TARGET_PDB_FILE:maya2glTF>>" "${MAYA_OUTPUT_DIR}/${MAYA_VERSION}/plug-ins/>")
   )
-  
-  set(MAYA_OUTPUT_DIR "${PROJECT_BINARY_DIR}/redist")
-  set(MAYA_PACKAGE_DIR "${MAYA_OUTPUT_DIR}/package")
+endif()
 
-  file(REMOVE_RECURSE ${MAYA_OUTPUT_DIR}/)
-  set(MAYA_OUTPUT_LIST "${MAYA_OUTPUT_DIR}/"
-    "${MAYA_PACKAGE_DIR}/"
-    "${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/plug-ins/"
-    "${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/scripts/"
-    "${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/prefs/"
-    "${MAYA_PACKAGE_DIR}/maya2glTF/PBR/"
-  )
-  file(MAKE_DIRECTORY ${MAYA_OUTPUT_LIST})
-  add_custom_command(TARGET maya2glTF POST_BUILD 
-    COMMAND xcopy /y "$<SHELL_PATH:$<TARGET_FILE:maya2glTF>>" "$<SHELL_PATH:${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/plug-ins/>"    
-    COMMAND xcopy /y "$<SHELL_PATH:${CMAKE_CURRENT_BINARY_DIR}/maya2glTF_version.mel>" "$<SHELL_PATH:${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/scripts/>"
-    COMMAND xcopy /y "$<SHELL_PATH:${PROJECT_SOURCE_DIR}/maya/scripts/maya2glTF*.*>" "$<SHELL_PATH:${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/scripts/>"
-    COMMAND xcopy /y /s /i "$<SHELL_PATH:${PROJECT_SOURCE_DIR}/maya/renderData/*.*>" "$<SHELL_PATH:${MAYA_PACKAGE_DIR}/maya2glTF/PBR/>"
-    COMMAND xcopy /y /s /i "$<SHELL_PATH:${PROJECT_SOURCE_DIR}/maya/prefs/*.*>" "$<SHELL_PATH:${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/prefs/>"
-    COMMAND if exist "$<SHELL_PATH:$<TARGET_PDB_FILE:maya2glTF>>" (xcopy /y /c "$<SHELL_PATH:$<TARGET_PDB_FILE:maya2glTF>>" "$<SHELL_PATH:${MAYA_PACKAGE_DIR}/${MAYA_VERSION}/plug-ins/>")
-    COMMAND xcopy /y "$<SHELL_PATH:${PROJECT_SOURCE_DIR}/maya/maya2glTFDeploy.bat>" "$<SHELL_PATH:${MAYA_OUTPUT_DIR}/>"
-    COMMAND ${CMAKE_COMMAND} -E tar cfv ${CMAKE_BINARY_DIR}/maya2gltf_${ARCHIVE_VERSION}_maya_${MAYA_VERSION}.zip --format=zip "${MAYA_OUTPUT_DIR}"
+# ---------------------------------------------------------------------------
+# Redist Packaging (Installer .bat + plugin files)
+# ---------------------------------------------------------------------------
+set(REDIST_DIR "${CMAKE_BINARY_DIR}/redist")
+file(MAKE_DIRECTORY "${REDIST_DIR}")
+
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${PROJECT_NAME}>" "${REDIST_DIR}/"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_BINARY_DIR}/maya2glTF_version.mel" "${REDIST_DIR}/"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/maya/scripts" "${REDIST_DIR}/scripts"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/maya/renderData" "${REDIST_DIR}/renderData"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/maya/prefs" "${REDIST_DIR}/prefs"
+    COMMENT "Staging redist package in ${REDIST_DIR}"
+)
+
+# The PDB only exists in Debug/RelWithDebInfo builds, so guard the copy
+# (an unconditional copy aborts the whole post-build chain in Release).
+if(MSVC)
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+      COMMAND if exist "$<SHELL_PATH:$<TARGET_PDB_FILE:${PROJECT_NAME}>>" (xcopy /y /c "$<SHELL_PATH:$<TARGET_PDB_FILE:${PROJECT_NAME}>>" "$<SHELL_PATH:${REDIST_DIR}>\\")
   )
 endif()
+
+# Generate installer .bat (copies from its own folder, so redist is relocatable)
+set(PLUGIN_FILE_NAME "${PROJECT_NAME}${MAYA_PLUGIN_EXTENSION}")
+configure_file(
+    "${PROJECT_SOURCE_DIR}/installer.bat.in"
+    "${REDIST_DIR}/Maya2glTF_Installer.bat"
+    @ONLY
+    NEWLINE_STYLE CRLF
+)
 
 MAYA_PLUGIN(${PROJECT_NAME})
