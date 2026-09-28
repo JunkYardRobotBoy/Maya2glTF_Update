@@ -1,5 +1,5 @@
 source "maya2glTF_UI";
-source "maya2glTF_assignPbrShader.mel";
+source "maya2glTF_common.mel";
 rehash;
 
 maya2glTF_UI();

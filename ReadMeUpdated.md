@@ -75,7 +75,7 @@ This is an updated and maintained fork of the original Maya2glTF project. With t
   - `diffuse_env` => Image-based-lighting (IBL) prefiltered diffuse environment map (PMREM)
   - `specular_env` => Image-based-lightning (IBL) prefiltered specular environment map (PMREM)
   - `brdf` => Bidirectional reflectance distribution function lookup table texture
-  - _you can customize these conventions, see `maya2glTF_assignPbrShader.mel`_
+  - _you can customize these conventions, see `maya2glTF_pbrTextures.mel`_
 - all textures are optional
 - set the [technique to transparent if desired](https://github.com/iimachines/Maya2glTF/issues/150)
 - see the [glTF PBR page](https://github.com/KhronosGroup/glTF-WebGL-PBR) page for more info.

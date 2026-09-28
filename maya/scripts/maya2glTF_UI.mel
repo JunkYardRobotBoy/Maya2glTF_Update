@@ -1,5 +1,90 @@
 source "maya2glTF_common.mel";
-// --- Helper Procs for Animation Management ---
+
+// ============================================================================
+// --- PERSISTENCE STORAGE LAYER PROCEDURES ---
+// ============================================================================
+
+global proc string maya2glTF_GetOrCreateSettingsNode() {
+    string $nodeName = "maya2glTF_persistent_settings";
+    if (!`objExists $nodeName`) {
+        string $createdNode = `createNode "network" -name $nodeName`;
+        addAttr -longName "sceneName" -dataType "string" $createdNode;
+        addAttr -longName "outputDir" -dataType "string" $createdNode;
+        addAttr -longName "serializedClips" -dataType "string" $createdNode;
+    }
+    return $nodeName;
+}
+
+global proc maya2glTF_SaveSettingsToScene() {
+    string $node = `maya2glTF_GetOrCreateSettingsNode`;
+    
+    string $sceneName = `textField -q -text tf_sceneName`;
+    string $outputDir = `textField -q -text tf_outputDir`;
+    string $allClips[] = `textScrollList -q -allItems tsl_clipList`;
+    
+    string $serializedClips = "";
+    for ($i = 0; $i < size($allClips); $i++) {
+        string $tokens[];
+        tokenize $allClips[$i] " |:" $tokens;
+        if (size($tokens) >= 3) {
+            $serializedClips += ($tokens[0] + ":" + $tokens[1] + ":" + $tokens[2]);
+            if ($i < (size($allClips) - 1)) { $serializedClips += "|";
+            }
+        }
+    }
+    
+    setAttr -type "string" ($node + ".sceneName") $sceneName;
+    setAttr -type "string" ($node + ".outputDir") $outputDir;
+    setAttr -type "string" ($node + ".serializedClips") $serializedClips;
+}
+
+// ============================================================================
+// --- GLOBAL PERSISTENCE STORAGE FOR ENVIRONMENT TEXTURES ---
+// ============================================================================
+
+global proc maya2glTF_SaveGlobalEnvSettings() {
+    // Save current file texture input paths globally to the workstation profile
+    optionVar -sv "maya2glTF_EnvDiffuse" `textField -q -text tf_envDiffuse`;
+    optionVar -sv "maya2glTF_EnvSpecular" `textField -q -text tf_envSpecular`;
+    optionVar -sv "maya2glTF_EnvBrdf" `textField -q -text tf_envBrdf`;
+}
+
+// ============================================================================
+// --- CLIP SORTING ALGORITHM ---
+// ============================================================================
+
+global proc maya2glTF_SortAndRefreshClips() {
+    string $allClips[] = `textScrollList -q -allItems tsl_clipList`;
+    int $count = size($allClips);
+    if ($count <= 1) return;
+
+    float $startFrames[];
+    for ($i = 0; $i < $count; $i++) {
+        string $tokens[];
+        tokenize $allClips[$i] " |:" $tokens;
+        $startFrames[$i] = (size($tokens) >= 2) ? (float)$tokens[1] : 0.0;
+    }
+
+    for ($i = 0; $i < $count; $i++) {
+        for ($j = 0; $j < $count - $i - 1; $j++) {
+            if ($startFrames[$j] > $startFrames[$j + 1]) {
+                float $tempFrame = $startFrames[$j]; $startFrames[$j] = $startFrames[$j + 1]; $startFrames[$j + 1] = $tempFrame;
+
+                string $tempClip = $allClips[$j]; $allClips[$j] = $allClips[$j + 1]; $allClips[$j + 1] = $tempClip;
+            }
+        }
+    }
+
+    textScrollList -e -removeAll tsl_clipList;
+    for ($clip in $allClips) {
+        textScrollList -e -append $clip tsl_clipList;
+    }
+}
+
+// ============================================================================
+// --- HELPER PROCS FOR ANIMATION MANAGEMENT ---
+// ============================================================================
+
 global proc maya2glTF_AddClip() {
     string $name = `textField -q -text tf_clipName`;
     float $start = `floatField -q -value ff_clipStart`;
@@ -7,19 +92,29 @@ global proc maya2glTF_AddClip() {
     if ($name != "") {
         textScrollList -e -append ($name + " | " + $start + ":" + $end) tsl_clipList;
         textField -e -text "" tf_clipName; 
+        
+        maya2glTF_SortAndRefreshClips();
+        maya2glTF_SaveSettingsToScene();
     }
 }
 
 global proc maya2glTF_RemoveClip() {
     int $idx[] = `textScrollList -q -selectIndexedItem tsl_clipList`;
-    if (size($idx) > 0) textScrollList -e -removeIndexedItem $idx[0] tsl_clipList;
+    if (size($idx) > 0) {
+        textScrollList -e -removeIndexedItem $idx[0] tsl_clipList;
+        maya2glTF_SaveSettingsToScene();
+    }
 }
 
-// --- Main UI ---
+// ============================================================================
+// --- MAIN UI LAYOUT ---
+// ============================================================================
+
 global proc maya2glTF_UI() {
     if (`window -exists maya2glTF_Win`) deleteUI maya2glTF_Win;
-
-    window -title "Maya2glTF - Pro Exporter 2027" -widthHeight 450 850 maya2glTF_Win;
+    // Load the exporter up front so a missing plug-in is reported before any settings are entered.
+    catch(`maya2glTF_ensurePluginLoaded`);
+    window -title "Maya2glTF - Pro Exporter 2027" -widthHeight 450 920 maya2glTF_Win;
     scrollLayout -childResizable true;
     columnLayout -adjustableColumn true -rowSpacing 5;
 
@@ -28,7 +123,7 @@ global proc maya2glTF_UI() {
         columnLayout -adjustableColumn true -rowSpacing 5;
             rowLayout -numberOfColumns 2 -columnWidth2 100 300 -adjustableColumn 2;
                 text -label "Scene Name:";
-                textField -text "MyScene" tf_sceneName;
+                textField -text "MyScene" -changeCommand "maya2glTF_SaveSettingsToScene()" tf_sceneName;
             setParent ..;
             rowLayout -numberOfColumns 2 -columnWidth2 100 300 -adjustableColumn 2;
                 text -label "Copyright:";
@@ -36,10 +131,12 @@ global proc maya2glTF_UI() {
             setParent ..;
             rowLayout -numberOfColumns 3 -columnWidth3 100 250 60 -adjustableColumn 2;
                 text -label "Output Folder: ";
+                
                 string $outDir = `workspace -q -rd`;
                 if (`optionVar -exists "maya2glTF_LastOutputDir"`) $outDir = `optionVar -q "maya2glTF_LastOutputDir"`;
-                textField -text $outDir tf_outputDir;
-                button -label "Browse" -command "string $dir[] = `fileDialog2 -fileMode 3`; if(size($dir)>0) { textField -e -text $dir[0] tf_outputDir; optionVar -sv \"maya2glTF_LastOutputDir\" $dir[0]; }";
+                
+                textField -text $outDir -changeCommand "maya2glTF_SaveSettingsToScene()" tf_outputDir;
+                button -label "Browse" -command "string $dir[] = `fileDialog2 -fileMode 3`; if(size($dir)>0) { textField -e -text $dir[0] tf_outputDir; optionVar -sv \"maya2glTF_LastOutputDir\" $dir[0]; maya2glTF_SaveSettingsToScene(); }";
             setParent ..;
         setParent ..;
     setParent ..;
@@ -47,9 +144,55 @@ global proc maya2glTF_UI() {
     // --- 2. Shader & Workflow Tools ---
     frameLayout -label "PBR Shader & Workflow Tools" -collapsable true;
         columnLayout -adjustableColumn true -rowSpacing 8;
-            button -label "Assign PBR Shader to Selection" -command "maya2glTF_assignPbrShader();";
-            button -label "Convert MASH to Instances" -command "python(\"import maya2glTF_mash; maya2glTF_mash.createMashInstances()\")";
-            separator -height 10 -style "in";
+            
+            // SIDE-BY-SIDE BUTTON LAYOUT USING FORMLAYOUT
+            string $btnForm = `formLayout`;
+                string $btnAssign = `button -label "Assign PBR Shader" -command "maya2glTF_assignPbrShader();"`;
+                string $btnMapEnv = `button -label "Map Env Textures" -command "maya2glTF_updateActiveEnvironmentMaps();"`;
+                
+                formLayout -edit
+                    -attachForm     $btnAssign "top"    0
+                    -attachForm     $btnAssign "bottom" 0
+                    -attachForm     $btnAssign "left"   0
+                    -attachPosition $btnAssign "right"  2 50
+                    
+                    -attachForm     $btnMapEnv "top"    0
+                    -attachForm     $btnMapEnv "bottom" 0
+                    -attachControl  $btnMapEnv "left"   2 $btnAssign
+                    -attachForm     $btnMapEnv "right"  0
+                $btnForm;
+            setParent ..;
+
+            // HIDDEN/PERSISTENT ENVIRONMENT TEXTURE FIELD INPUTS
+            // Query dynamic defaults if global settings profile is clean
+            // Defaults are the maps the installer ships next to glTF_PBR.ogsfx.
+            // A saved optionVar is only honoured if that file still exists.
+            string $defUserDir = maya2glTF_pbrImagesDir();
+            string $initDiffuse  = maya2glTF_envDefault("maya2glTF_EnvDiffuse",  $defUserDir + "damaged_helmet_diffuse_env.dds");
+            string $initSpecular = maya2glTF_envDefault("maya2glTF_EnvSpecular", $defUserDir + "damaged_helmet_specular_env.dds");
+            string $initBrdf     = maya2glTF_envDefault("maya2glTF_EnvBrdf",     $defUserDir + "brdfLUT.dds");
+
+            rowLayout -numberOfColumns 3 -columnWidth3 100 250 60 -adjustableColumn 2;
+                text -label "Diffuse Env:";
+                textField -text $initDiffuse -changeCommand "maya2glTF_SaveGlobalEnvSettings()" tf_envDiffuse;
+                button -label "..." -command "string $f[] = `fileDialog2 -fileMode 1`; if(size($f)>0) { textField -e -text $f[0] tf_envDiffuse; maya2glTF_SaveGlobalEnvSettings(); }";
+            setParent ..;
+
+            rowLayout -numberOfColumns 3 -columnWidth3 100 250 60 -adjustableColumn 2;
+                text -label "Specular Env:";
+                textField -text $initSpecular -changeCommand "maya2glTF_SaveGlobalEnvSettings()" tf_envSpecular;
+                button -label "..." -command "string $f[] = `fileDialog2 -fileMode 1`; if(size($f)>0) { textField -e -text $f[0] tf_envSpecular; maya2glTF_SaveGlobalEnvSettings(); }";
+            setParent ..;
+
+            rowLayout -numberOfColumns 3 -columnWidth3 100 250 60 -adjustableColumn 2;
+                text -label "BRDF LUT Map:";
+                textField -text $initBrdf -changeCommand "maya2glTF_SaveGlobalEnvSettings()" tf_envBrdf;
+                button -label "..." -command "string $f[] = `fileDialog2 -fileMode 1`; if(size($f)>0) { textField -e -text $f[0] tf_envBrdf; maya2glTF_SaveGlobalEnvSettings(); }";
+            setParent ..;
+
+            separator -height 5 -style "in";
+            button -label "Convert MASH to Instances" -command "python(\"import importlib, maya2glTF_mash; importlib.reload(maya2glTF_mash); maya2glTF_mash.createMashInstances()\")";
+            separator -height 5 -style "in";
             button -label "Ignore Selected Mesh Deformers" -command "maya2glTF_ignoreSelectedDeformers();";
             
             text -label "Manual Ignore Deformers (space separated):" -align "left";
@@ -89,39 +232,88 @@ global proc maya2glTF_UI() {
             text -label "Animation Clips Manager:" -font "boldLabelFont";
             textScrollList -height 100 tsl_clipList;
             
-            rowLayout -numberOfColumns 3 -columnWidth3 120 80 80 -adjustableColumn 1;
-                textField -placeholderText "Clip Name" tf_clipName;
-                floatField -value 1.0 ff_clipStart;
-                floatField -value 24.0 ff_clipEnd;
+            string $form = `formLayout`;
+                string $tName  = `textField -placeholderText "Clip Name" tf_clipName`;
+                string $fStart = `floatField -value 1.0 ff_clipStart`;
+                string $fEnd   = `floatField -value 24.0 ff_clipEnd`;
+
+                formLayout -edit
+                    -attachForm     $tName  "top"    0
+                    -attachForm     $tName  "bottom" 0
+                    -attachForm     $tName  "left"   0
+                    -attachPosition $tName  "right"  2 50
+
+                    -attachForm     $fStart "top"    0
+                    -attachForm     $fStart "bottom" 0
+                    -attachControl  $fStart "left"   2 $tName
+                    -attachPosition $fStart "right"  2 75
+
+                    -attachForm     $fEnd   "top"    0
+                    -attachForm     $fEnd   "bottom" 0
+                    -attachControl  $fEnd   "left"   2 $fStart
+                    -attachForm     $fEnd   "right"  0
+                $form;
             setParent ..;
 
-            rowLayout -numberOfColumns 2 -columnWidth2 200 200 -adjustableColumn 1;
+            rowLayout -numberOfColumns 2 -columnWidth2 225 225 -adjustableColumn 1;
                 button -label "Add Clip" -c "maya2glTF_AddClip";
                 button -label "Remove Selected" -c "maya2glTF_RemoveClip";
             setParent ..;
         setParent ..;
     setParent ..;
 
-    // --- Execution ---
+    // ========================================================================
+    // --- LOAD AND POPULATE PERSISTENT SCENE DATA ---
+    // ========================================================================
+    string $settingsNode = "maya2glTF_persistent_settings";
+    if (`objExists $settingsNode`) {
+        string $savedSceneName = `getAttr ($settingsNode + ".sceneName")`;
+        string $savedOutputDir = `getAttr ($settingsNode + ".outputDir")`;
+        string $savedClipsRaw  = `getAttr ($settingsNode + ".serializedClips")`;
+
+        if ($savedSceneName != "") {
+            textField -e -text $savedSceneName tf_sceneName;
+        }
+        if ($savedOutputDir != "") {
+            textField -e -text $savedOutputDir tf_outputDir;
+        }
+        
+        if ($savedClipsRaw != "") {
+            string $clipSegments[];
+            tokenize $savedClipsRaw "|" $clipSegments;
+            for ($segment in $clipSegments) {
+                string $elements[];
+                tokenize $segment ":" $elements;
+                if (size($elements) >= 3) {
+                    string $formattedUIItem = ($elements[0] + " | " + $elements[1] + ":" + $elements[2]);
+                    textScrollList -e -append $formattedUIItem tsl_clipList;
+                }
+            }
+            maya2glTF_SortAndRefreshClips();
+        }
+    }
+    // ========================================================================
+
     separator -height 20 -style "none";
     button -label "RUN EXPORT" -height 50 -backgroundColor 0.2 0.4 0.6 -command "maya2glTF_ExecuteExport";
 
     showWindow maya2glTF_Win;
 }
 
-// --- Export Execution ---
 global proc maya2glTF_ExecuteExport() {
+    maya2glTF_ensurePluginLoaded();
+    maya2glTF_SaveSettingsToScene();
+    maya2glTF_SaveGlobalEnvSettings();
+
     string $outDir = `textField -q -text tf_outputDir`;
     optionVar -sv "maya2glTF_LastOutputDir" $outDir;
 
     string $cmd = "maya2glTF";
-
     $cmd += (" -of \"" + $outDir + "\"");
     $cmd += (" -sn \"" + `textField -q -text tf_sceneName` + "\"");
     
     string $cpr = `textField -q -text tf_copyright`;
     if ($cpr != "") $cmd += (" -cpr \"" + $cpr + "\"");
-
     if (`checkBox -q -value chk_selectedOnly`) $cmd += " -sno";
     if (`checkBox -q -value chk_visibleOnly`)  $cmd += " -vno";
     if (`checkBox -q -value chk_glb`)          $cmd += " -glb";

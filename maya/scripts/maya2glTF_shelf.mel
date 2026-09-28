@@ -2,8 +2,8 @@ global proc maya2glTF_setupShelf() {
     string $currentShelf = `tabLayout -q -selectTab $gShelfTopLevel`;
     setParent $currentShelf;
 
-    // The user requested Maya2glTF2026.png located in maya/prefs/icons/
-    string $icon = "Maya2glTF2026.png";
+    // Icon lives in maya/prefs/icons/ (installed to <maya user dir>/<version>/prefs/icons/)
+    string $icon = "Maya2glTF.png";
     string $command = "source \"maya2glTF_UI.mel\"; maya2glTF_UI();";
     string $label = "Maya2glTF";
 
