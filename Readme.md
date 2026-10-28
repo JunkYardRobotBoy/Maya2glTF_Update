@@ -66,55 +66,48 @@ If the shelf is missing, run `maya2glTF_UI();` in the MEL script editor.
 
 ## Using the exporter
 
-Open the UI from the shelf or with `maya2glTF_UI();`. The window has four
-sections and a **RUN EXPORT** button.
+Open the UI from the shelf or with `maya2glTF_UI();`. The exporter works on
+the current selection, so select the meshes, groups or cameras you want before
+pressing **RUN EXPORT**. With *Selected nodes only* off, everything under the
+selection is exported too.
 
-![Maya2glTF exporter window](artwork/UI.gif)
+<table>
+<tr>
+<td valign="top" width="62%">
 
-**Asset Identification.** Scene name (becomes the file name), copyright text
-embedded in the file, and the output folder. The last output folder is
-remembered between sessions.
+**Asset Identification**
 
-**PBR Shader & Workflow Tools.**
+- *Scene Name* becomes the file name.
+- *Copyright* is embedded in the file.
+- *Output Folder* is remembered between sessions.
 
-- *Assign PBR Shader* creates a GLSL material running the bundled
-  `glTF_PBR.ogsfx` effect on the selected meshes, then opens a file picker for
-  textures. Cancel the picker to assign the shader without textures. Texture
-  files are matched to slots by name: `basecolor` or `albedo`, `metal`,
-  `rough`, `occl` or `_ao` (or `_orm` for a packed map), `normal`, `emissive`.
-  The exporter reads these materials back into glTF PBR without conversion.
-- *Map Env Textures* applies the three environment maps in the fields below
-  (diffuse, specular, BRDF lookup) to every glTF PBR shader in the scene. The
-  defaults are the maps shipped with the installer. These only affect the
-  viewport preview, not the export.
-- *Convert MASH to Instances* turns the selected MASH network into DAG
-  instances under a `<network>_Instances` group. Select any node of the network
-  (the Waiter, the Repro or Instancer output, or a MASH node) and click. Hidden
-  points are skipped, and clicking again rebuilds the group instead of adding
-  a second set. Hide the original Repro mesh or Instancer before exporting so
-  the geometry is not exported twice.
-- *Ignore Selected Mesh Deformers* adds the skin clusters, blend shapes,
-  clusters and lattices found in the selection's history to the ignore list.
-  Use this for deformers that shape a character but should not be exported as
-  animation.
+**PBR Shader & Workflow Tools**
 
-**Mesh & Scene Filters.** Selected nodes only, visible nodes only (on by
-default), binary `.glb` (on by default), GPU instancing, keep pivot nodes
-(see [Pivots](#pivots)), a global scale factor, and a free-text field for any
-extra [command flags](#command-reference).
+- *Assign PBR Shader* puts a GLSL material running the bundled `glTF_PBR.ogsfx` effect on the selected meshes, then opens a file picker for textures. Cancel the picker to assign the shader without textures. Files are matched to slots by name: `basecolor` or `albedo`, `metal`, `rough`, `occl` or `_ao` (or `_orm` for a packed map), `normal`, `emissive`. The exporter reads these materials straight back into glTF PBR.
+- *Map Env Textures* applies the three environment maps below it (diffuse, specular, BRDF lookup) to every glTF PBR shader in the scene. The defaults are the maps shipped with the installer. They affect the viewport preview only, not the export.
+- *Convert MASH to Instances* turns the selected MASH network into DAG instances under a `<network>_Instances` group. Select any node of the network and click. Hidden points are skipped, and clicking again rebuilds the group rather than adding a second set. Hide the original Repro mesh or Instancer before exporting so the geometry is not exported twice.
+- *Ignore Selected Mesh Deformers* adds the skin clusters, blend shapes, clusters and lattices in the selection's history to the ignore list, for deformers that shape a character but should not export as animation.
 
-**Animation & Clips.** This replaces the previous workflow of picking a
-single TRAX clip source from a dropdown. Set the target frame rate, then build
-a list of clips: type a name, a start frame and an end frame and press
-*Add Clip*. Each entry becomes its own named animation in the exported file,
-so a character can ship with `idle`, `walk` and `run` from one export instead
-of three. The list is sorted by start frame, entries can be removed
-individually, and the whole list is stored in the scene so it survives saving
-and reopening. Leave the list empty to export a static file.
+**Mesh & Scene Filters**
 
-The exporter works on the current selection, so select the meshes, groups or
-cameras you want before pressing RUN EXPORT. With "Selected nodes only" off,
-everything under the selection is exported too.
+- *Selected nodes only*, *Visible nodes only* (on by default).
+- *Export as Binary (.glb)*, on by default.
+- *GPU Instancing* writes `EXT_mesh_gpu_instancing` for shared meshes.
+- *Keep pivot nodes* restores the two-node pivot form, see [Pivots](#pivots).
+- *Scale Factor*, and a free-text field for extra [command flags](#command-reference).
+
+**Animation & Clips**
+
+This replaces the old single TRAX clip dropdown. Set the target frame rate, then build a list of clips: type a name, a start frame and an end frame and press *Add Clip*. Each entry becomes its own named animation in the exported file, so a character ships with `idle`, `walk` and `run` from one export. The list is sorted by start frame, entries can be removed individually, and the whole list is stored in the scene so it survives saving and reopening. Leave the list empty to export a static file.
+
+</td>
+<td valign="top" width="38%">
+
+<img src="artwork/UI.gif" alt="Maya2glTF exporter window" width="100%">
+
+</td>
+</tr>
+</table>
 
 The viewport must use OpenGL (Preferences > Display > Viewport 2.0 rendering
 engine) for the GLSL PBR shader to display. Export works with either backend.
