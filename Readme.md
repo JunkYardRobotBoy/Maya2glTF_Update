@@ -73,7 +73,7 @@ selection is exported too.
 
 <table>
 <tr>
-<td valign="top" width="62%">
+<td valign="top" width="50%">
 
 **Asset Identification**
 
@@ -101,7 +101,7 @@ selection is exported too.
 This replaces the old single TRAX clip dropdown. Set the target frame rate, then build a list of clips: type a name, a start frame and an end frame and press *Add Clip*. Each entry becomes its own named animation in the exported file, so a character ships with `idle`, `walk` and `run` from one export. The list is sorted by start frame, entries can be removed individually, and the whole list is stored in the scene so it survives saving and reopening. Leave the list empty to export a static file.
 
 </td>
-<td valign="top" width="38%">
+<td valign="top" width="50%">
 
 <img src="artwork/UI.gif" alt="Maya2glTF exporter window" width="100%">
 
