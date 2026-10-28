@@ -1,413 +1,346 @@
-﻿# Maya to glTF exporter
- 
-## Poll
+﻿# Maya2glTF for Maya 2027
 
-If you believe this plugin is good enough to request Github Sponsoring, please say so [here](https://github.com/iimachines/Maya2glTF/issues/144)
+A glTF 2.0 exporter plug-in for Autodesk Maya, with a one-click installer, a
+redesigned export UI, MASH-to-instance conversion and a viewport PBR shader
+that round-trips to glTF.
 
-## News
+This is a maintained fork of the original
+[iimachines/Maya2glTF](https://github.com/iimachines/Maya2glTF) project,
+updated with the approval of the original authors to support Maya 2026 and
+2027 on Windows.
 
-* Version [1.5.0 released](https://github.com/iimachines/Maya2glTF/releases) for Windows! 
+![Maya Helmet screenshot](img/maya_screenshot.jpg)
 
-![Maya Tiger screenshot](/img/tiger-wim@koetan.gif)
+## Highlights
 
-![Maya Helmet screenshot](/img/maya_screenshot.jpg)
+- **Maya 2027 and 2026, Windows x64.** Built against the official devkits with
+  Visual Studio 2022.
+- **Installer.** Every release ships a `Maya2glTF_Installer.bat` that copies
+  the plug-in, scripts, shelf, icons and shader files into your Maya user
+  folder. No manual file juggling.
+- **Export UI.** A single window for naming, output folder, filters, animation
+  clips and shader tools. Settings are stored in the scene so they survive a
+  reload.
+- **Pivots baked into nodes.** Maya pivots are exported as the glTF node origin
+  with no helper nodes, so objects rotate around the same point in the engine
+  as they do in Maya. See [Pivots](#pivots).
+- **MASH to instances.** One click turns a MASH network into real DAG
+  instances, which the exporter writes as one shared mesh referenced by many
+  nodes. Combined with `EXT_mesh_gpu_instancing` this gives small files and
+  few draw calls for scenes with thousands of repeated objects.
+- **Materials.** Exports the bundled glTF PBR GLSL shader, `openPBRSurface`,
+  `aiStandardSurface`, and the colour and transparency of Lambert, Phong and
+  Blinn.
+- **Animation.** Multiple named clips per export, node and joint transforms,
+  skin clusters and blend shape weights, sampled per frame.
 
 ## Installation
 
-- Supports Maya 2017-2020, Windows 10 x64, macOS High Sierra+ and Linux
+Requirements: Windows 10 or 11 x64, Maya 2027 (or 2026 with the matching
+build), and the
+[Microsoft Visual C++ 2022 redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+Most machines already have the redistributable.
 
-- *Windows 10 x64*
-  - install the [Microsoft Visual C++ redistributables](https://aka.ms/vs/16/release/vc_redist.x64.exe).
-    - on many systems this is already installed, so you might want to skip this step.
-  - download the desired [release](https://github.com/iimachines/Maya2glTF/releases)
-  - extract the downloaded `zip` file to any location (e.g. your desktop)
-  - open the created `maya2glTF` folder
-  - double click on the `deploy` batch file
-    - This will copy the plug-in and scripts to your `Documents` folder
-  - re-launch Maya
-- *macOS High Sierra* and *Linux*
-    - must currently be build from source, see below
+1. Download the latest zip from the
+   [Releases](https://github.com/JunkYardRobotBoy/Maya2glTF_Update/releases)
+   page and extract it anywhere.
+2. Make sure Maya is closed.
+3. Double-click `Maya2glTF_Installer.bat`. It copies into your `Documents\maya`
+   folder:
 
-## Usage
+   | What | Where |
+   |---|---|
+   | `maya2glTF.mll` | `2027\plug-ins\` |
+   | MEL and Python scripts | `scripts\` |
+   | `glTF` shelf and icons | `2027\prefs\shelves\`, `2027\prefs\icons\` |
+   | PBR shader and environment maps | `maya2glTF\PBR\` |
 
-  - load a scene
-  - in the Maya script window, type `maya2glTF_UI` to launch the UI.
-    - You might want to select the `maya2glTF_UI` script text and drag it using the middle-mouse-button to the `Custom` shelf, or even better, make a `glTF` shelf...
-  - select the meshes and cameras you want export
-    - or click the `select all polygon meshes` button
-  - select the desired animation clips source using the dropdown box
-    - TRAX animation clips are also supported.
-      - _only enabled clips on the first track are exported_.
-      - if you have multiple characters, select the desired one.
-  - hit the `export selected meshes` button.
-    - _currently the user interface is not automatically updated when you change or load a scene; just re-run the `maya2glTF_UI` script or hit the `refresh user interface` button_.
-  - good luck! ;-)
+4. Start Maya. A `glTF` shelf appears with three buttons: open the exporter,
+   set a logical parent, and clear logical parents. The plug-in is loaded and
+   set to auto-load the first time the exporter runs.
 
-## Contributions
+If the shelf is missing, run `maya2glTF_UI();` in the MEL script editor.
 
-- let me know if this doesn't work for you
-  - ideally make an issue, providing the OS, Maya and plug-in version, and a test-scene.
-- if it _does_ work, please give maya2glTF a :star: on GitHUB, and spread the word :sunglasses:
+## Using the exporter
 
-## Shading
-- _I assume you already used something like Substance Painter to create glTF-PBR textures_
-- **Make sure you have selected OpenGL for rendering, DirectX is _not_ supported yet**
-  ![image](https://user-images.githubusercontent.com/2389359/132230501-962fd5cc-5ee9-484c-9136-c0bb483754ee.png)
-- select the polygons you want to shade
-- click the `assign PBR shader to selection` button
-- the first time, you need to select our PBR OpenGL shader at:
-  - `Documents\maya\maya2glTF\PBR\shaders\glTF_PBR.ogsfx`
-- next, select all the PBR textures you want to apply in one go:
-  - for example, for the [damaged helmet model](https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/DamagedHelmet/glTF), multi-select the following textures:
-    - `Default_normal.jpg`
-    - `Default_albedo.jpg`
-    - `Default_AO.jpg`
-    - `Default_emissive.jpg`
-    - `Default_metalRoughness.jpg`
-- now the PBR shader and all textures should be applied to your selection
-- by default we use the following keyword-in-filename convention to detect the kind of texture:
-  - `basecolor` or `albedo` => base color texture
-  - `metal` or `_orm` => metallic texture
-  - `rough` or `_orm` => roughness texture
-  - `occl` or `_orm` or `_ao` => occlusion texture
-  - `normal` => tangent space normal texture
-    - see also the `-mts` flag for MikkTSpace information if your models come from Blender
-  - `emissive` => emissive texture
-  - `diffuse_env` => Image-based-lighting (IBL) prefiltered diffuse environment map (PMREM)
-  - `specular_env` => Image-based-lightning (IBL) prefiltered specular environment map (PMREM)
-  - `brdf` => Bidirectional reflectance distribution function lookup table texture
-  - _you can customize these conventions, see `maya2glTF_pbrTextures.mel`_
-- all textures are optional
-- set the [technique to transparent if desired](https://github.com/iimachines/Maya2glTF/issues/150)
-- see the [glTF PBR page](https://github.com/KhronosGroup/glTF-WebGL-PBR) page for more info.
-- the metallic and roughness textures are always merged into a single texture when exporting.
-  - _If you provide JPEGs, we use Maya's JPEG encoder to generate this texture. However, the default Maya JPEG encoding settings are very low quality_.
-    - The following MEL snippet sets the JPEG encoder quality:
-      ```
-      putenv "AW_JPEG_Q_FACTOR" "92";
-      ```
-    - The following MEL code enables maximum possible JPEG quality:
-      ```
-      putenv "AW_JPEG_Q_FACTOR" "100";
-      putenv "AW_JPEG_SUB_SAMPLING" "1x1,1x1,1x1";
-      ```
+Open the UI from the shelf or with `maya2glTF_UI();`. The window has four
+sections and a **RUN EXPORT** button.
 
-## Rationale
+**Asset Identification.** Scene name (becomes the file name), copyright text
+embedded in the file, and the output folder. The last output folder is
+remembered between sessions.
 
-At **[IIM](https://www.iim.media)**, we are specialized in creating realtime interactive 3D animation, for web, education, events and broadcast television, since 1992. We have developed our own multi-machine real-time 3D puppeteering software called **AnimationNow**, and we are about to upgrade this to make use of up-to-date rendering techniques.
+**PBR Shader & Workflow Tools.**
 
-If something goes wrong in our production pipeline, it usually is exporting our complex rigged Maya characters. In the past, we contributed both donations and patches to the open source OGRE exporter, but now we want to dig deep into the Maya API ourselves, so we can help out our artists if something goes wrong during the export.
+- *Assign PBR Shader* creates a GLSL material running the bundled
+  `glTF_PBR.ogsfx` effect on the selected meshes, then opens a file picker for
+  textures. Cancel the picker to assign the shader without textures. Texture
+  files are matched to slots by name: `basecolor` or `albedo`, `metal`,
+  `rough`, `occl` or `_ao` (or `_orm` for a packed map), `normal`, `emissive`.
+  The exporter reads these materials back into glTF PBR without conversion.
+- *Map Env Textures* applies the three environment maps in the fields below
+  (diffuse, specular, BRDF lookup) to every glTF PBR shader in the scene. The
+  defaults are the maps shipped with the installer. These only affect the
+  viewport preview, not the export.
+- *Convert MASH to Instances* turns the selected MASH network into DAG
+  instances under a `<network>_Instances` group. Select any node of the network
+  (the Waiter, the Repro or Instancer output, or a MASH node) and click. Hidden
+  points are skipped, and clicking again rebuilds the group instead of adding
+  a second set. Hide the original Repro mesh or Instancer before exporting so
+  the geometry is not exported twice.
+- *Ignore Selected Mesh Deformers* adds the skin clusters, blend shapes,
+  clusters and lattices found in the selection's history to the ignore list.
+  Use this for deformers that shape a character but should not be exported as
+  animation.
 
-**[glTF 2.0](https://www.khronos.org/gltf)** seems to contain most of the features we need, and is extensible. IMHO [glTF](https://www.khronos.org/gltf) must become the defacto standard for animated 3D content. At [IIM](https://www.iim.media), we plan to use [glTF](https://www.khronos.org/gltf) for all our 3D assets.
+**Mesh & Scene Filters.** Selected nodes only, visible nodes only (on by
+default), binary `.glb` (on by default), GPU instancing, keep pivot nodes
+(see [Pivots](#pivots)), a global scale factor, and a free-text field for any
+extra [command flags](#command-reference).
+
+**Animation & Clips.** Target frame rate and a clip list. Add a clip with a
+name, start frame and end frame. Clips are sorted by start frame and saved in
+the scene. Leave the list empty to export a static file.
+
+The exporter works on the current selection, so select the meshes, groups or
+cameras you want before pressing RUN EXPORT. With "Selected nodes only" off,
+everything under the selection is exported too.
+
+The viewport must use OpenGL (Preferences > Display > Viewport 2.0 rendering
+engine) for the GLSL PBR shader to display. Export works with either backend.
+
+## Pivots
+
+glTF nodes have no pivot point, Maya transforms do. Older versions of this
+exporter handled the difference by emitting two glTF nodes per pivoted
+transform: an outer node carrying the rotation and scale, and an inner
+`:PIV` node carrying the negative pivot offset. That doubled the node count of
+most scenes.
+
+Since this release the pivot is baked instead:
+
+- The glTF node's origin is the Maya pivot, so rotating the node in an engine
+  turns around the same point as in Maya.
+- The offset is folded into the mesh vertex positions, and into the local
+  transforms of any child nodes, every frame.
+- Animation, instancing and parenting behave exactly as before, with no
+  `:PIV` nodes in the file.
+
+Baking is skipped automatically where it cannot be done safely: joints,
+skinned meshes, and transforms whose pivot attributes are animated or
+connected. Those keep the two-node form. Tick **Keep pivot nodes** in the UI,
+or pass `-kpv`, to get the two-node form everywhere, for example if a
+downstream tool depends on it.
+
+## Materials
+
+| Maya material | Export |
+|---|---|
+| GLSLShader running `glTF_PBR.ogsfx` | Full PBR: base colour, metallic, roughness, occlusion, normal, emissive, factors |
+| `openPBRSurface` (Maya 2026+) | PBR parameters and textures mapped to glTF |
+| `aiStandardSurface` (Arnold) | PBR parameters and textures mapped to glTF |
+| Lambert, Phong, Blinn | Colour and transparency only |
+
+Metallic and roughness textures are always packed into one glTF texture on
+export. If you supply JPEGs, Maya's JPEG encoder is used for that packed
+texture and its default quality is low. Raise it with:
+
+```
+putenv "AW_JPEG_Q_FACTOR" "100";
+putenv "AW_JPEG_SUB_SAMPLING" "1x1,1x1,1x1";
+```
+
+## Command reference
+
+The UI builds a `maya2glTF` MEL command from its settings and prints it to the
+script editor before running, so anything the UI does can be scripted. Flags
+can be given by short or long name. Values marked *multiple* may be repeated.
+
+### Output
+
+| Flag | Description |
+|---|---|
+| `-of` `-outputFolder STRING` | Output folder. Required. |
+| `-sn` `-sceneName STRING` | File name without extension. Default: the Maya scene name. |
+| `-glb` `-binary` | Write a single `.glb`. Default: `.gltf` plus `.bin`. |
+| `-ext` `-externalTextures` | With `-glb`, keep textures as separate files. |
+| `-cpr` `-copyright STRING` | Copyright text embedded in the asset. |
+| `-cof` `-cleanOutputFolder` | Delete the output folder first. |
+| `-gfe` `-gltfFileExtension STRING`, `-gbe` `-glbFileExtension STRING` | Override the file extensions. |
+| `-nbu` `-niceBufferURIs` | Name `.bin` files after the scene without numeric suffixes. |
+| `-hbu` `-hashBufferURI` | Name buffers by a hash of their contents. |
+| `-sab` `-separateAccessorBuffers` | One buffer per accessor. |
+| `-sma` `-splitMeshAnimation` | Separate buffers for mesh data and animation. |
+| `-sbr` `-splitByReference` | Separate buffers per referenced file. Requires `-sma`. |
+| `-cui` `-convertUnsupportedImages` | Convert unsupported image formats to PNG. |
+
+### Selection and hierarchy
+
+| Flag | Description |
+|---|---|
+| `-sno` `-selectedNodesOnly` | Export only the selected nodes, not their descendants. |
+| `-vno` `-visibleNodesOnly` | Skip invisible nodes. |
+| `-cam` `-cameras STRING` *multiple* | Export the named camera. |
+| `-kpv` `-keepPivots` | Keep the two-node `:PIV` form for pivoted transforms. See [Pivots](#pivots). |
+| `-ksn` `-keepShapeNodes` | Keep shape nodes that are the only child of their transform instead of merging them. |
+| `-frn` `-forceRootNode` | Always add a root node. |
+| `-isc` `-ignoreSegmentScaleCompensation` | Treat joints as if segment scale compensation were off. |
+| `-dnn` `-disableNameAssignment` | Do not copy Maya node names into the file. |
+| `-kon` `-keepMayaNamespaces` | Keep namespaces in node names. By default they are stripped. |
+| `-smd` `-skipMeshDeduplication` | Write a separate mesh for every node, even for DAG instances. |
+| `-gpu` `-extGpuInstancing` | Emit `EXT_mesh_gpu_instancing` for groups of unanimated instances that share a mesh. |
+
+### Geometry
+
+| Flag | Description |
+|---|---|
+| `-sf` `-scaleFactor FLOAT` | Global scale. By default applied through a root node. |
+| `-bsf` `-bakeScalingFactor` | Apply the scale factor to vertex positions instead of a root node. |
+| `-mpa` `-meshPrimitiveAttributes STRING` | Attributes to export, separated by `\|`. Default: all present, from `POSITION\|NORMAL\|TANGENT\|TEXCOORD\|COLOR\|JOINTS\|WEIGHTS`. |
+| `-bpa` `-blendPrimitiveAttributes STRING` | Attributes for blend shape targets. Default: `NORMAL\|TANGENT`. |
+| `-eut` `-excludeUnusedTexcoord` | Drop texture coordinates on primitives with no textures. |
+| `-i32` `-force32bitIndices` | Always use 32-bit indices. |
+| `-mts` `-mikkelsenTangentSpace` | Compute MikkTSpace tangents instead of using Maya's. Use for meshes imported from Blender without tangents. |
+| `-mta` `-mikkelsenTangentAngularThreshold FLOAT` | Angular threshold for MikkTSpace. Debugging only. |
+
+### Materials
+
+| Flag | Description |
+|---|---|
+| `-ssm` `-skipStandardMaterials` | Export only PBR materials, skipping Lambert, Phong and Blinn. |
+| `-smt` `-skipMaterialTextures` | Skip all textures, useful when exporting just an animation. |
+| `-dm` `-defaultMaterial` | Create a default PBR material for meshes without one. |
+| `-cm` `-colorizeMaterials` | Give every material a distinct debug colour. |
+| `-gof` `-globalOpacityFactor FLOAT` | Opacity multiplier applied to all materials. |
+
+### Animation
+
+| Flag | Description |
+|---|---|
+| `-acn` `-animationClipName STRING` *multiple* | Clip name. |
+| `-ast` `-animationClipStartTime TIME` *multiple* | Clip start frame. |
+| `-aet` `-animationClipEndTime TIME` *multiple* | Clip end frame. |
+| `-afr` `-animationClipFrameRate FLOAT` *multiple* | Sampling rate in frames per second. Give once or once per clip. |
+| `-ivt` `-initialValuesTime TIME` | Frame holding the rest pose and default values. Should match the skin bind pose. |
+| `-pbm` `-skinUsePreBindMatrixAndMesh` | Take the bind pose from the skin cluster's pre-bind matrices and input mesh. |
+| `-dsa` `-detectStepAnimations INT` | Sample extra frames to detect stepped curves, for example `-dsa 2`. |
+| `-fac` `-forceAnimationChannels` | Write channels for every node, even unanimated ones. |
+| `-fas` `-forceAnimationSampling` | Sample every node, even unanimated ones. |
+| `-ctt` `-crt` `-cst` `-cwt` `... FLOAT` | Thresholds below which translation, rotation, scale or weight curves count as constant. |
+| `-rvp` `-redrawViewport` | Redraw the viewport while sampling. Slower. |
+
+### Deformers
+
+| Flag | Description |
+|---|---|
+| `-imd` `-ignoreMeshDeformers STRING` *multiple* | Deformer to ignore. Deformers carrying a `Maya2glTF_ignored` attribute are ignored too. |
+| `-ssc` `-skipSkinClusters` | Export meshes unskinned. |
+| `-sbs` `-skipBlendShapes` | Export meshes without blend shapes. |
+| `-rsb` `-reportSkewedInverseBindMatrices` | Report inverse bind matrices with skew. |
+
+### Precision and debugging
+
+| Flag | Description |
+|---|---|
+| `-prp` `-prd` `-prc` `-prt` `-prs` `-prm` `... FLOAT` | Rounding precision for positions, directions, colours, texture coordinates, scales and matrices. |
+| `-dmy` `-dumpMaya STRING` | Dump the Maya intermediate data to a file, or `CONSOLE`. Slow on large meshes. |
+| `-dgl` `-dumpGTLF STRING` | Dump the glTF JSON to a file, or `CONSOLE`. |
+| `-dac` `-dumpAccessorComponents` | Dump every accessor as a text file. |
+| `-dnv` `-debugNormalVectors`, `-dtv` `-debugTangentVectors`, `-dvl` `-debugVectorLength FLOAT` | Add line geometry showing normals or tangents. |
+| `-cow` `-clearOutputWindow` | Clear the output window before exporting. |
+
+## Scripting
+
+Everything the UI does is a MEL or Python call in `Documents\maya\scripts`:
+
+```
+maya2glTF_UI();                       // open the window
+maya2glTF_assignPbrShader();          // PBR shader on the selection
+maya2glTF_updateActiveEnvironmentMaps();
+maya2glTF_ignoreSelectedDeformers();
+```
+
+```python
+import importlib, maya2glTF_mash
+importlib.reload(maya2glTF_mash)
+maya2glTF_mash.createMashInstances()   # MASH network in the selection
+```
+
+Batch helpers for exporting or playblasting every scene in a folder live in
+`maya2glTF_exportAllScenes.mel`, `maya2glTF_exportClipScenes.mel` and
+`maya2glTF_playblastClipScenes.mel`.
 
 ## Limitations
 
-Maya interally uses a dataflow architecture (called the _dependency graph_). This means that power-users can connect the dependency nodes in the graph in any way they like. Unfortunately this awesome flexibility also makes it insanely difficult to develop an exporter that always works ;-)
-
-## Plugin Command Arguments
-  _ `-outputFolder (-of) STRING` _(required)\* \* the output folder
-
-  - `-scaleFactor (-sf) FLOAT` _(optional)_
-
-    - scale factor to apply to the vertices
-
-  - `-copyright (-cpr) STRING` _(optional)_
-
-    - copyright text to be embedded in the GLTF file
-
-  - `-selectedNodesOnly (-sno)` _(optional)_
-
-    - only exports the directly selected nodes
-    - by default all descendants of the selected nodes are exported too
-
-  - `-sceneName (-sn) STRING` _(optional)_
-
-    - the name of the glTF filename
-    - default is Maya scene name
-
-  - `-binary (-glb)` _(optional)_
-
-    - exports a single `glb` asset file
-    - default is a JSON `glTF` and binary `bin` file containing the buffers
-
-  - `-niceBufferURIs (-nbu)` _(optional)_
-    - removes `0` suffix from generated `.bin` files if only a single one is generated.
-    - doesn't append `/data` to the buffer names, just used the scene name.
-
-  - `-hashBufferURIs (-hbu)` _(optional)_
-    - computes an 256-bit hash for each buffer, and uses that as the buffer name.
-
-  - `-externalTextures (-ext)` _(optional)_
-
-    - doesn't embed textures in the `glb` files. 
-    - only valid when exporting a `-glb`
-
-  - `-camera (-cam) STRING` _(optional, multiple)_
-
-    - exports camera given by name.
-
-  - `-initialValuesTime (-ivt) TIME` _(optional)_
-
-    - the time where the initial/default values can be found
-    - by default frame 0 is used
-    - this frame should match the **skin bind pose**
-    - all nodes and meshes get their default transforms and weights from this time
-
-  - `-animationClipName (-acn) STRING` _(optional, multiple)_
-
-    - the name of the animation clip
-
-  - `-animationClipStartTime (-ast) TIME` _(optional, multiple)_
-
-    - the start time of the animation clip
-    - required when exporting animation clips
-
-  - `-animationClipEndTime (-aet) TIME` _(optional, multiple)_
-
-    - the end time of the animation clip
-    - required when exporting animation clips
-
-  - `-animationClipFrameRate (-afr) FLOAT` _(optional, multiple)_
-
-    - the frames-per-second of the animation clip
-    - required when exporting animation clips
-    - either you pass this for each clip, or once
-
-  - `-detectStepAnimations (-dsa) NUMBER` _(optional)_
-
-    - pass `-dsa 2` to detect `STEP` "interpolations" in the sampled animations curves. 
-    - enable this e.g. when binding the `shape.visiblity` to `node.scale.x, y z`, to prevent interpolation.
-    - currently this is all or nothing, animation curves are not yet split into discrete and continuous parts
-    
-  - `-meshPrimitiveAttributes (-mpa) STRING` _(optional)_
-
-    - the attributes for the shapes to export, separated by a vertical bar |
-    - by default all attributes are exported, e.g.
-      - `-mpa POSITION|NORMAL|TANGENT|TEXCOORD|COLOR|JOINTS|WEIGHTS`
-
-  - `-blendPrimitiveAttributes (-bpa) STRING` _(optional)_
-
-    - the attributes for the blend-shapes to export, separated by a vertical bar |
-    - by default all GLTF supported attributes are exported, e.g.
-      - `-mpa POSITION|NORMAL|TANGENT`
-
-  - `-force32bitIndices (-i32)` _(optional)_
-
-    - forces 32-bit indices to be written to the GLTF buffers
-    - by default 16-bit indices are used whenever possible
-
-  - `-disableNameAssignment (-dnn)` _(optional)_
-
-    - do not assign Maya node names to GLTF nodes
-    - by default names are copied
-
-  - `-mikkelsenTangentSpace (-mts)` _(optional)_
-
-    - use the 'MikkTSpace' algoritm for computing the tangents instead of those from Maya
-    - by default the Maya tangents are exported
-      - if you imported meshes from Blender without importing the tangents, and you just use Maya for doing animation, you should use this flag.
-
-  - `-mikkelsenTangentAngularThreshold (-mta)` _(optional)_
-
-    - the angular threshold to be passed to the 'MikkTSpace' algoritm
-      - by default 180 is passed
-      - in general you should not use this flag, it is mainly for debugging
-
-  - `-skipStandardMaterials (-ssm)` _(optional)_
-
-    - do not export standard materials (lambert, phong, etc), only GLTF PBR materials.
-    - by default standard materials are converted
-      - but just the color and transparency is copied for now.
-
-  - `-excludeUnusedTexcoord (-eut)` _(optional)_
-
-    - exclude texture coordinates when the mesh primitive doesn't have textures?
-      - by default texture coordinates are always exported
-
-  - `-defaultMaterial (-dm)` _(optional)_
-
-    - always generates a glTF PBR material, even if no material is assigned to a mesh in Maya
-    - by default no default materials are generated
-
-  - `-colorizeMaterials (-cm)` _(optional)_
-
-    - for debugging, generate a unique PBR material with a different color for each material
-    - by default no debug materials are generated
-
-  - `-dumpMaya (-dmy) STRING` _(optional)_
-
-    - dumps debugging info of the Maya objects to the given filepath argument
-    - use the word `CONSOLE` to print to the Maya output window
-      - _WARNING: this can take a very long time if you have complex meshes!_
-    - by default nothing is printed
-
-  - `-dumpGLTF (-dgl) STRING` _(optional)_
-
-    - dumps a formatted version of the glTF asset file to the given filepath argument
-    - use the word `CONSOLE` to print to the Maya output window
-      - _WARNING: this can take a very long time if you have complex meshes!_
-    - by default nothing is printed
-
-  - `-ignoreMeshDeformers (-imd) STRING` _(optional, multiple)_
-
-    - blend-shape or skin-cluster deformers to be ignored
-    - by default no deformers are ignored
-    - use this if you have deformers that are used to generate different characters, but not for animation
-	- you can also add the custom attribute `Maya2glTF_ignored` (short name `MGi`) to the deformer to ignore it.
-		- to `maya2glTF_UI` has a button to add this attribute to the selected deformer(s)
-
-  - `-skipSkinClusters (-ssc)` _(optional)_
-
-    - skip all skin cluster deformers, as if the mesh was not skinned
-    - by default no skin clusters are skipped
-
-  - `-skipBlendShapes (-sbs)` _(optional)_
-
-    - skip all blend-shape deformers, as if the mesh was not morphed
-    - by default no blend-shape deformers are skipped
-
-  - `-redrawViewport (-rvp)` _(optional)_
-    - redraw the viewport when exporting animation.
-    - by default the viewport is not refreshed, since this slows down the exporter
-
-## Status
-
-I consider this plugin to be production quality now, but use it at your own risk :)
-
-- Supports **Maya 2017-2020** (64-bit only)
-
-  - Maya 2016 is not supported any more
-
-- Linux support hasn't been tested a lot.
-
-- Supports **static and animated, skinned and morphed meshes**
-
-  - Currently all animation is _baked_ per frame, no compression is done yet
-
-- Supports **multiple animation clips** (node and joint transforms, blend shape weights)
-
-  - Blend shape targets are not sparse yet
-
-- Exports `POSITION`, `NORMAL`, `COLOR`, `NORMAL`, `TANGENT`, `TEXCOORD`, `JOINTS` and `WEIGHTS` attributes
-
-- Supports exporting to `glTF + bin`, single `glTF` or single `glb` files.
-
-- Uses a modified fork of the glTF code from the COLLADA2GLTF project
-
-- Currently Phong, Lambert and Blinn shaders are converted to PBR, but only the color texture and transparency is taken into account (this is mainly done for testing with existing models).
-
-- Comes with GLSL code with a friendly UI ported from the official Khronos PBR WebGL code.
-
-  - See `maya2glTF\maya\renderData\shaders\glTF_PBR.ogsfx`
-  - To use this hardware shader
-    - make sure the GLSL shader plugin is loaded
-    - use the _OpenGL/Core Profile_ in Preferences/Display
-  - You can use the `maya2glTF\maya\scripts\assign_glTF_PBR_material_and_textures.mel` script to assign multiple textures at once, based on filename patterns
-
-- Supports exporting cameras
-
-- No lights yet
-
-  - support for the [KHR_lights_punctual](https://github.com/KhronosGroup/glTF/tree/master/extensions/2.0/Khronos/KHR_lights_punctual) will be added at some point, PR welcome, see issues
-
-## Building
-
-- Currently out-of-the-box downloads are only provided for Windows x64 
-
-  - _If you want to try the exporter, but you can't build it, give me a sign_
-
-- I assume you already installed a [GIT client](https://git-scm.com/downloads)
-
-- Some versions of Maya require a **[Maya devkit](https://www.autodesk.com/developer-network/platform-technologies/maya)**
-  - *Seems not needed for Maya 2018+*
-
-* Clone this repository
-
-  - Open a command prompt (aka terminal), and run
-
-  ```
-  git clone https://github.com/iimachines/Maya2glTF.git --branch master
-  ```
-
-### Building for **Windows**
-- Install **[Visual Studio 2019](https://www.visualstudio.com/downloads)**
-
-  - Select at least the **C++ desktop development** payload
-  - In the individual components tab, select:
-    - the **Windows 8.1 SDK**
-    - the **Windows Universal CRT SDK**
-  - This document was written for Visual Studio 2019, other versions might not work.
-
-- Install the Win64-x64 version of **[CMAKE](https://cmake.org)**
-
-  - Make sure to add CMake to the system path
-
-* Enter the `maya2glTF` folder, and run
-
-  ```
-  windows_create_vs_project -D MAYA_VERSION=2020
-  ```
-
-  - Change 2020 in the Maya version you want to target.
-  - After a couple of seconds, a Visual Studio solution should be generated in the `build` folder.
-
-* Next build the `maya2glTF` plugin itself
-
-  - Launch Visual Studio 2019
-
-  - Open the solution `maya2glTF\build\maya2glTF.sln`
-
-  - Select the desired configuration target (e.g. `release`)
-
-  - Build
-
-  - If all goes well, the plugin and all scripts will be copied to your `%userprofile%\Documents\maya` folders
-
-### Building for **MacOS**
-  - install [XCode](https://www.apple.com/us/search/xcode) from the app-store
-  - install [CMake](https://cmake.org/download/)
-  - open a Terminal window
-    - See `Finder` `Utilities` `Terminal`
-  - clone this repository
-    - e.g. `git clone https://github.com/iimachines/Maya2glTF.git ~/Documents/Maya2glTF`
-  - enter the cloned directory
-    - e.g. `cd ~/Documents/Maya2glTF`
-  - create the build script by running
-    - `./osx_create_project.sh 2020`
-    - Replace 2020 with the Maya version you're targetting
-  - enter the generated `build` folder, and `make` the plugin
-    - `make`
-  - then install the plugin by running
-    - `make install`
-  - if all goes well, the plugin should be ready to be used.
-
-
-### Building for **Linux**
-    - TODO
-
-#### Testing the build
-
-  - Start Maya
-
-  - Load a scene 
-  
-    - **NOTE** to load scenes from this project, first set the Maya project to the `maya2glTF\maya` folder
-
-    - to see if the plugin was built correctly, it's best to use a scene from this repository, for example `maya2glTF\maya\scenes\damaged_helmet.ma`
-
-  - select the meshes and cameras you want to export
-
-    - by default all descendants are also exported, unless you add the -selectedNodesOnly (sno) flag.
-
-  - run the following MEL script
-
-  ```
-  maya2glTF -outputFolder "<your output folder>"
-  ```
-
-  - I use the [vscode](https://code.visualstudio.com/) [glTF viewer](https://github.com/AnalyticalGraphicsInc/gltf-vscode)
-
-    - Make sure to switch between BabylonJS, Cesium and ThreeJS, they all give different results... For our own assets, it seems ThreeJS gives the best results.
-
-  - If you want to contribute to the development, you might want to use the MEL script `maya2glTF\maya\scripts\test-iteration.mel`. This unloads and reloads the plugin everytime, unlocking the DLL.
-
+- Windows only. The macOS and Linux build scripts from the original project
+  are still in the repository but are untested with Maya 2027.
+- Animation is sampled per frame. There is no curve compression.
+- Blend shape targets are not sparse.
+- Lights are not exported.
+- A transform with different rotate and scale pivots exports with the rotate
+  pivot only, with a warning.
+- Maya's dependency graph allows arbitrary node networks. Unusual setups may
+  need the `-imd` flag or the ignore list to export cleanly.
+
+## Building from source
+
+Requirements:
+
+- [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) with the
+  *Desktop development with C++* workload.
+- [CMake](https://cmake.org/download/) 3.13 or newer on the `PATH`.
+- [Git](https://git-scm.com/downloads).
+- The Maya 2027 devkit from the
+  [Autodesk Platform Technologies](https://aps.autodesk.com/developer/overview/maya)
+  page, extracted anywhere.
+
+Steps:
+
+1. Clone the repository.
+2. Open `build_maya2027.bat` and set `MAYA_DEVKIT_BASE` to your devkit folder
+   and `MAYA_LOCATION` to your Maya install if it is not the default.
+3. Close Maya and run `build_maya2027.bat`. It configures a Visual Studio
+   solution in `build_2027`, builds the Release plug-in, and as a post-build
+   step:
+   - installs the plug-in, scripts, shelf and shader into your `Documents\maya`
+     folder so you can test immediately;
+   - stages a relocatable package in `build_2027\redist` containing the
+     plug-in, scripts, prefs, render data and a generated
+     `Maya2glTF_Installer.bat`.
+
+For incremental rebuilds after the first run:
+
+```
+cmake --build build_2027 --config Release --target maya2glTF
+```
+
+Maya must be closed for the install step, since Windows will not overwrite a
+loaded plug-in. The exported file's `generator` field records the git tag and
+commit captured when CMake configured, so re-run `build_maya2027.bat` (or
+CMake's configure step) before packaging a release.
+
+### Making a release
+
+1. Commit, then tag: `git tag v1.6.0`.
+2. Run `build_maya2027.bat` so the generator string picks up the tag.
+3. Zip the contents of `build_2027\redist` and attach it to a GitHub release.
+
+### Headless testing
+
+The plug-in, the MASH converter and the shader scripts all run under
+`mayabatch`, which is handy for verification without opening the UI:
+
+```
+"C:\Program Files\Autodesk\Maya2027\bin\mayabatch.exe" -command "loadPlugin maya2glTF; polyCube; select -r pCube1; maya2glTF -of \"C:/tmp/out\" -glb;"
+```
+
+## Credits and licence
+
+Maya2glTF was created by [IIM](https://www.iim.media) and released under the
+MIT licence; see `LICENSE`. The glTF writer is a modified fork of
+[COLLADA2GLTF](https://github.com/KhronosGroup/COLLADA2GLTF). The PBR shader
+is ported from the Khronos glTF WebGL PBR sample.
+
+If the exporter works for you, star the repository. If it does not, open an
+issue with your Maya version, the plug-in version from the file's `generator`
+field, and a scene that reproduces the problem.
