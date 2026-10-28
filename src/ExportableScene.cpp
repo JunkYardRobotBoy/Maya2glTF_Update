@@ -174,7 +174,7 @@ void ExportableScene::processGpuInstancing() {
 
         for (auto child : parent->children) {
             // Must be a simple transform with one mesh and no children
-            if (child->transformKind != TransformKind::Simple || !child->children.empty()) {
+            if (child->hasExtraNode() || !child->children.empty()) {
                 allCompatible = false;
                 break;
             }

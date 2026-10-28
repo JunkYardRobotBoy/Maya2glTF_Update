@@ -7,10 +7,59 @@
 #include "ExportableResources.h"
 #include "ExportableScene.h"
 #include "MayaException.h"
+#include "MeshSkeleton.h"
 #include "NodeAnimation.h"
 #include "Transform.h"
 
 ExportableNode::ExportableNode(const MDagPath &dagPath) : ExportableObject(dagPath.node()), dagPath(dagPath) {}
+
+namespace {
+// True if the plug, or any of its children, is driven by an animation curve
+// or by any other incoming connection (constraint, expression, rig, ...).
+bool isDrivenPlug(const MPlug &plug) {
+    if (plug.isNull())
+        return false;
+
+    if (plug.isDestination() || MAnimUtil::isAnimated(plug))
+        return true;
+
+    if (plug.isCompound()) {
+        const auto count = plug.numChildren();
+        for (unsigned i = 0; i < count; ++i) {
+            if (isDrivenPlug(plug.child(i)))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+// Can the pivot of this transform be baked into a single glTF node?
+// Not when the pivot itself can move (animated/connected pivot attributes),
+// not for joints, and not when the transform's mesh is skinned: shifting
+// skinned vertices would also require shifting the bind matrices.
+bool canBakePivot(const MFnTransform &fnTransform, const MDagPath &dagPath, const Arguments &args) {
+    static const char *const pivotAttributes[] = {
+        "rotatePivot", "rotatePivotTranslate", "scalePivot", "scalePivotTranslate",
+    };
+
+    MStatus status;
+    for (const auto attribute : pivotAttributes) {
+        const MPlug plug = fnTransform.findPlug(attribute, false, &status);
+        if (status && isDrivenPlug(plug))
+            return false;
+    }
+
+    MDagPath shapePath = dagPath;
+    if (shapePath.extendToShape() && shapePath.hasFn(MFn::kMesh)) {
+        MFnMesh fnMesh(shapePath, &status);
+        if (status && !MeshSkeleton::tryExtractSkinCluster(fnMesh, args.ignoreMeshDeformers).isNull())
+            return false;
+    }
+
+    return true;
+}
+} // namespace
 
 void ExportableNode::load(ExportableScene &scene, NodeTransformCache &transformCache) {
     MStatus status;
@@ -62,12 +111,22 @@ void ExportableNode::load(ExportableScene &scene, NodeTransformCache &transformC
         pivotPoint = rotatePivot;
 
         if (pivotPoint != MPoint::origin) {
-            cout << prefix << "Transform " << dagPath.partialPathName()
-                 << " has a pivot point, extra GLTF nodes will be added to "
-                    "handle this"
-                 << endl;
+            if (!args.keepPivots && !obj.hasFn(MFn::kJoint) && canBakePivot(fnTransform, dagPath, args)) {
+                // One glTF node whose origin is the Maya pivot; the -pivot
+                // offset is baked into the mesh vertices and child transforms.
+                cout << prefix << "Transform " << dagPath.partialPathName()
+                     << " has a pivot point, baking it into the node origin (use -kpv for the extra :PIV node)"
+                     << endl;
 
-            transformKind = TransformKind::ComplexTransform;
+                transformKind = TransformKind::BakedPivot;
+            } else {
+                cout << prefix << "Transform " << dagPath.partialPathName()
+                     << " has a pivot point, extra GLTF nodes will be added to "
+                        "handle this"
+                     << endl;
+
+                transformKind = TransformKind::ComplexTransform;
+            }
         }
     }
 
@@ -153,6 +212,17 @@ void ExportableNode::load(ExportableScene &scene, NodeTransformCache &transformC
 }
 
 ExportableNode::~ExportableNode() = default;
+
+MVector ExportableNode::meshBakeOffset() const {
+    if (transformKind == TransformKind::BakedPivot)
+        return pivotPoint - MPoint::origin;
+
+    // A shape node inherits the pivot of the transform it belongs to.
+    if (dagPath.node().hasFn(MFn::kShape) && parentNode && parentNode->transformKind == TransformKind::BakedPivot)
+        return parentNode->pivotPoint - MPoint::origin;
+
+    return MVector::zero;
+}
 
 std::unique_ptr<NodeAnimation>
 ExportableNode::createAnimation(const Arguments &args, const ExportableFrames &frameTimes, const double scaleFactor) {

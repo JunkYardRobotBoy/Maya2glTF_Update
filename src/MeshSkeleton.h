@@ -66,9 +66,14 @@ class MeshSkeleton {
 
     size_t vertexJointAssignmentSetCount() const;
 
-    MObject inputShape() const { 
-        return m_inputShape; 
+    MObject inputShape() const {
+        return m_inputShape;
     }
+
+    // The skin cluster deforming this mesh, or a null object if none.
+    static MObject
+    tryExtractSkinCluster(const MFnMesh &fnMesh,
+                          const MSelectionList &ignoredDeformers);
 
   private:
     DISALLOW_COPY_MOVE_ASSIGN(MeshSkeleton);
@@ -79,8 +84,4 @@ class MeshSkeleton {
     VertexJointAssignmentTable m_vertexJointAssignmentsTable;
     size_t m_maxVertexJointAssignmentCount;
     MObject m_inputShape;
-
-    static MObject
-    tryExtractSkinCluster(const MFnMesh &fnMesh,
-                          const MSelectionList &ignoredDeformers);
 };

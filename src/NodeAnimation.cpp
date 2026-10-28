@@ -17,6 +17,7 @@ NodeAnimation::NodeAnimation(const ExportableNode &node, const ExportableFrames 
 
     switch (node.transformKind) {
     case TransformKind::Simple:
+    case TransformKind::BakedPivot:
         m_positions = std::make_unique<PropAnimation>(frames, pNode, GLTF::Animation::Path::TRANSLATION, 3, detectStepSampleCount, false);
         m_rotations = std::make_unique<PropAnimation>(frames, pNode, GLTF::Animation::Path::ROTATION, 4, detectStepSampleCount, false);
         m_scales = std::make_unique<PropAnimation>(frames, pNode, GLTF::Animation::Path::SCALE, 3, detectStepSampleCount, false);
@@ -69,6 +70,7 @@ void NodeAnimation::sampleAt(const MTime &absoluteTime, const int frameIndex, co
 
     switch (node.transformKind) {
     case TransformKind::Simple:
+    case TransformKind::BakedPivot:
         m_positions->append(gsl::make_span(pTRS.translation), superSampleIndex);
         m_rotations->appendQuaternion(gsl::make_span(pTRS.rotation), superSampleIndex);
         m_scales->append(gsl::make_span(pTRS.scale), superSampleIndex);
@@ -134,6 +136,7 @@ void NodeAnimation::exportTo(GLTF::Animation &glAnimation) {
 
     switch (node.transformKind) {
     case TransformKind::Simple:
+    case TransformKind::BakedPivot:
         finish(glAnimation, "T", m_positions, m_arguments.constantTranslationThreshold, pTRS.translation);
         finish(glAnimation, "R", m_rotations, m_arguments.constantRotationThreshold, pTRS.rotation);
         finish(glAnimation, "S", m_scales, m_arguments.constantScalingThreshold, pTRS.scale);

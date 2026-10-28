@@ -64,6 +64,9 @@ class ExportableResources : public ExportableItem {
         // We'll use a simple representation of shading.
         std::vector<std::string> shaderUuids;
         std::vector<int> primitiveToShaderMap;
+        // Instances whose transforms have different pivots get different
+        // vertex positions (see ExportableNode::meshBakeOffset).
+        std::array<double, 3> bakeOffset{{0, 0, 0}};
 
         bool operator<(const MeshKey &other) const;
     };

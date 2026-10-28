@@ -56,6 +56,7 @@ const auto skipBlendShapes = "sbs";
 const auto ignoreMeshDeformers = "imd";
 
 const auto ignoreSegmentScaleCompensation = "isc";
+const auto keepPivots = "kpv";
 
 const auto selectedNodesOnly = "sno";
 const auto visibleNodesOnly = "vno";
@@ -192,6 +193,7 @@ SyntaxFactory::SyntaxFactory() {
     registerFlag(ss, flag::excludeUnusedTexcoord, "excludeUnusedTexcoord", kNoArg);
 
     registerFlag(ss, flag::ignoreSegmentScaleCompensation, "ignoreSegmentScaleCompensation", kNoArg);
+    registerFlag(ss, flag::keepPivots, "keepPivots", kNoArg);
 
     registerFlag(ss, flag::keepShapeNodes, "keepShapeNodes", kNoArg);
     registerFlag(ss, flag::bakeScalingFactor, "bakeScalingFactor", kNoArg);
@@ -501,6 +503,7 @@ Arguments::Arguments(const MArgList &args, const MSyntax &syntax) {
     redrawViewport = adb.isFlagSet(flag::redrawViewport);
     excludeUnusedTexcoord = adb.isFlagSet(flag::excludeUnusedTexcoord);
     ignoreSegmentScaleCompensation = adb.isFlagSet(flag::ignoreSegmentScaleCompensation);
+    keepPivots = adb.isFlagSet(flag::keepPivots);
     keepShapeNodes = adb.isFlagSet(flag::keepShapeNodes);
     bakeScalingFactor = adb.isFlagSet(flag::bakeScalingFactor);
     forceRootNode = adb.isFlagSet(flag::forceRootNode);

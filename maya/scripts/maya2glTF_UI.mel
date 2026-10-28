@@ -207,6 +207,9 @@ global proc maya2glTF_UI() {
             checkBox -label "Visible nodes only" -value 1 chk_visibleOnly;
             checkBox -label "Export as Binary (.glb)" -value 1 chk_glb;
             checkBox -label "GPU Instancing (EXT_mesh_gpu_instancing)" -value 0 chk_gpuInstancing;
+            checkBox -label "Keep pivot nodes (:PIV) instead of baking pivots" -value 0
+                -annotation "By default each glTF node's origin is placed at its Maya pivot and the offset is baked into the mesh, so no extra :PIV nodes are needed. Tick to export the original two-node (outer + :PIV) structure instead."
+                chk_keepPivots;
             
             rowLayout -numberOfColumns 2 -columnWidth2 150 100;
                 text -label "Scale Factor:";
@@ -318,6 +321,7 @@ global proc maya2glTF_ExecuteExport() {
     if (`checkBox -q -value chk_visibleOnly`)  $cmd += " -vno";
     if (`checkBox -q -value chk_glb`)          $cmd += " -glb";
     if (`checkBox -q -value chk_gpuInstancing`) $cmd += " -gpu";
+    if (`checkBox -q -value chk_keepPivots`)   $cmd += " -kpv";
     
     float $scale = `floatField -q -value ff_scaleFactor`;
     $cmd += (" -sf " + $scale);

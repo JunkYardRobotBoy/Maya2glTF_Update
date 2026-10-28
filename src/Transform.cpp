@@ -135,10 +135,20 @@ NodeTransformCache::getTransform(const ExportableNode *node,
         state.requiresExtraNode = false;
         state.maxNonOrthogonality = 0;
     } else {
-        state.requiresExtraNode = node->transformKind != TransformKind::Simple;
+        state.requiresExtraNode = node->hasExtraNode();
 
-        const auto localMatrix =
+        auto localMatrix =
             getObjectSpaceMatrix(node->dagPath, node->parentDagPath());
+
+        // The parent's glTF node sits at the parent's Maya pivot, so children
+        // must be offset by -pivot. Mesh shapes get this offset baked into
+        // their vertices instead (see ExportableNode::meshBakeOffset).
+        const auto *parent = node->parentNode;
+        if (parent && parent->transformKind == TransformKind::BakedPivot && !node->dagPath.node().hasFn(MFn::kMesh)) {
+            MTransformationMatrix inversePivot;
+            inversePivot.setTranslation(MPoint::origin - parent->pivotPoint, MSpace::kTransform);
+            localMatrix = localMatrix * inversePivot.asMatrix();
+        }
 
         switch (node->transformKind) {
         case TransformKind::Simple: {
@@ -199,6 +209,21 @@ NodeTransformCache::getTransform(const ExportableNode *node,
             const MTransformationMatrix mayaLocalMatrix(m);
             getRotation(mayaLocalMatrix, trs0.rotation, dirPrecision);
             getScaling(mayaLocalMatrix, trs0.scale, sclPrecision);
+        } break;
+
+        case TransformKind::BakedPivot: {
+            // Single node = pivot * local, i.e. the old "outer" node; the
+            // -pivot part lives in the mesh vertices / child transforms.
+            MTransformationMatrix pivotTransformationMatrix;
+            pivotTransformationMatrix.setTranslation(node->pivotPoint - MPoint::origin, MSpace::kObject);
+            const auto combinedMatrix = pivotTransformationMatrix.asMatrix() * localMatrix;
+
+            state.maxNonOrthogonality = getAxesNonOrthogonality(combinedMatrix);
+
+            const MTransformationMatrix mayaMatrix(combinedMatrix);
+            getTranslation(mayaMatrix, trs0.translation, scaleFactor, posPrecision);
+            getRotation(mayaMatrix, trs0.rotation, dirPrecision);
+            getScaling(mayaMatrix, trs0.scale, sclPrecision);
         } break;
 
         case TransformKind::ComplexTransform: {

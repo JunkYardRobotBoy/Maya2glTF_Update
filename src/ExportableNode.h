@@ -13,8 +13,15 @@ enum class TransformKind {
     // A joint with segment scale compensation
     ComplexJoint,
 
-    // A transform with a pivot point
-    ComplexTransform
+    // A transform with a pivot point, represented by two glTF nodes:
+    // outer = (translation + pivot, rotation, scale), inner ":PIV" = -pivot
+    ComplexTransform,
+
+    // A transform with a pivot point, represented by a single glTF node whose
+    // origin is the Maya pivot: node = (translation + pivot, rotation, scale),
+    // while the -pivot offset is baked into the mesh vertices (and into the
+    // local transforms of child nodes). See ExportableNode::meshBakeOffset.
+    BakedPivot
 };
 
 class ExportableNode : public ExportableObject {
@@ -40,6 +47,17 @@ class ExportableNode : public ExportableObject {
 
     MPoint pivotPoint;
 
+    // True when the Maya transform needs two glTF nodes.
+    bool hasExtraNode() const {
+        return transformKind == TransformKind::ComplexJoint || transformKind == TransformKind::ComplexTransform;
+    }
+
+    // Object-space offset to subtract from the vertex positions of meshes
+    // attached to this node, so that the glTF node origin is the Maya pivot.
+    // Zero unless this node (or, for a shape node, its parent transform) is a
+    // BakedPivot transform.
+    MVector meshBakeOffset() const;
+
     // nullptr for root nodes.
     ExportableNode *parentNode = nullptr;
 
@@ -59,7 +77,7 @@ class ExportableNode : public ExportableObject {
     // The secondary node to represent the transform
     // Can be the same as the primary node for simple transforms
     // See Transform.h for details
-    GLTF::Node &glSecondaryNode() { return m_glNodes[transformKind != TransformKind::Simple]; }
+    GLTF::Node &glSecondaryNode() { return m_glNodes[hasExtraNode()]; }
     const GLTF::Node &glSecondaryNode() const { return const_cast<ExportableNode *>(this)->glSecondaryNode(); }
 
     MDagPath parentDagPath() const { return parentNode ? parentNode->dagPath : MDagPath(); }

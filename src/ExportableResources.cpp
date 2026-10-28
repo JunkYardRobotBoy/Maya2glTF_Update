@@ -205,6 +205,8 @@ bool ExportableResources::MeshKey::operator<(const MeshKey &other) const {
     if (h2 < h1) return false;
     if (shaderUuids < other.shaderUuids) return true;
     if (other.shaderUuids < shaderUuids) return false;
+    if (bakeOffset < other.bakeOffset) return true;
+    if (other.bakeOffset < bakeOffset) return false;
     return primitiveToShaderMap < other.primitiveToShaderMap;
 }
 
@@ -222,6 +224,8 @@ ExportableMesh *ExportableResources::getMesh(ExportableScene &scene, ExportableN
 
     MeshKey key;
     key.shape = shapeObj;
+    const auto bakeOffset = node.meshBakeOffset();
+    key.bakeOffset = {{bakeOffset.x, bakeOffset.y, bakeOffset.z}};
     
     // Get shading for this instance
     MObjectArray shaderGroups;

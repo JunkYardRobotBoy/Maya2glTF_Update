@@ -188,6 +188,13 @@ class Arguments {
     /** Ignore segment scale compensation */
     bool ignoreSegmentScaleCompensation = false;
 
+    /** Always emit the extra ":PIV" node for transforms with a pivot point.
+     * By default the pivot is baked: the glTF node origin becomes the Maya
+     * pivot and the -pivot offset goes into the mesh vertices and child
+     * transforms. Baking is skipped automatically for joints, skinned meshes
+     * and animated/connected pivots. */
+    bool keepPivots = false;
+
     /** Keep GLTF shape nodes that are the only child of their parent transform
      * node */
     bool keepShapeNodes = false;

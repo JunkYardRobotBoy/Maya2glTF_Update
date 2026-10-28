@@ -184,8 +184,9 @@ MeshVertices::MeshVertices(const MeshIndices &meshIndices, const MeshSkeleton *m
     m_positions.reserve(numPoints);
 
     const auto positionScale = args.getBakeScaleFactor();
+    const auto bakeOffset = node.meshBakeOffset();
     for (int i = 0; i < numPoints; ++i) {
-        const auto p = mPoints[i] * positionScale;
+        const auto p = (mPoints[i] - bakeOffset) * positionScale;
         m_positions.push_back(
             {roundToFloat(p.x, args.posPrecision), 
              roundToFloat(p.y, args.posPrecision), 
