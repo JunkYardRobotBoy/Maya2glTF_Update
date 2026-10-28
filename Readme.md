@@ -31,8 +31,11 @@ updated with the approval of the original authors to support Maya 2026 and
 - **Materials.** Exports the bundled glTF PBR GLSL shader, `openPBRSurface`,
   `aiStandardSurface`, and the colour and transparency of Lambert, Phong and
   Blinn.
-- **Animation.** Multiple named clips per export, node and joint transforms,
-  skin clusters and blend shape weights, sampled per frame.
+- **Animation clips manager.** Define any number of named clips with their own
+  frame ranges directly in the exporter, and export them all in one go as
+  separate glTF animations. Clips are saved with the scene, so the setup is
+  there the next time the file is opened. Node and joint transforms, skin
+  clusters and blend shape weights are sampled per frame.
 
 ## Installation
 
@@ -66,6 +69,8 @@ If the shelf is missing, run `maya2glTF_UI();` in the MEL script editor.
 Open the UI from the shelf or with `maya2glTF_UI();`. The window has four
 sections and a **RUN EXPORT** button.
 
+![Maya2glTF exporter window](artwork/UI.gif)
+
 **Asset Identification.** Scene name (becomes the file name), copyright text
 embedded in the file, and the output folder. The last output folder is
 remembered between sessions.
@@ -98,9 +103,14 @@ default), binary `.glb` (on by default), GPU instancing, keep pivot nodes
 (see [Pivots](#pivots)), a global scale factor, and a free-text field for any
 extra [command flags](#command-reference).
 
-**Animation & Clips.** Target frame rate and a clip list. Add a clip with a
-name, start frame and end frame. Clips are sorted by start frame and saved in
-the scene. Leave the list empty to export a static file.
+**Animation & Clips.** This replaces the previous workflow of picking a
+single TRAX clip source from a dropdown. Set the target frame rate, then build
+a list of clips: type a name, a start frame and an end frame and press
+*Add Clip*. Each entry becomes its own named animation in the exported file,
+so a character can ship with `idle`, `walk` and `run` from one export instead
+of three. The list is sorted by start frame, entries can be removed
+individually, and the whole list is stored in the scene so it survives saving
+and reopening. Leave the list empty to export a static file.
 
 The exporter works on the current selection, so select the meshes, groups or
 cameras you want before pressing RUN EXPORT. With "Selected nodes only" off,
